@@ -80,6 +80,16 @@ export interface QuestionResult {
   topic?: string;
 }
 
+// Adicionado para corrigir erro no SimuladoGenerator
+export interface BatchRequest {
+    area: string;
+    count: number;
+    isForeign?: boolean;
+    language?: string;
+    startIndex: number;
+    topics?: string[]; 
+}
+
 export interface ExamState {
   questions: (QuestionResult | null)[];
   essayTheme: EssayTheme | null;
@@ -169,6 +179,8 @@ export interface SisuEstimation {
   chance?: number; // Compatibilidade
   cutScore?: number; // Compatibilidade
   message?: string; // Compatibilidade
+  course?: string; // Compatibilidade
+  source?: string; // Compatibilidade
 }
 
 export interface SisuGoal {
@@ -198,7 +210,6 @@ export interface StudySession {
     subject: string;
 }
 
-// ESTE ERA O GRANDE VILÃO: A INTERFACE HÍBRIDA DO RELATÓRIO
 export interface WeeklyReportStats {
     totalExams: number;
     avgSim: number;
@@ -212,14 +223,13 @@ export interface WeeklyReportStats {
 export interface WeeklyReport {
     id: string;
     userId: string;
-    // Campos obrigatórios do SavedReport antigo
     createdAt: string;
     startDate: string;
     endDate: string;
     type: 'manual' | 'auto';
     stats: WeeklyReportStats; 
 
-    // Campos novos opcionais para compatibilidade
+    // Campos opcionais para compatibilidade
     weekStartDate?: string;
     weekEndDate?: string;
     totalStudyTime?: number;

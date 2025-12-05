@@ -92,7 +92,6 @@ export const deleteExam = (id: string): void => {
 // --- CRONOGRAMAS ---
 export const getSchedules = (): Schedule[] => JSON.parse(localStorage.getItem(SCHEDULES_KEY) || '[]');
 
-// CORREÇÃO: Aceita argumentos extras (...args) para compatibilidade
 export const saveSchedule = (schedule: Schedule, ...args: any[]): void => {
     const list = getSchedules();
     list.push(schedule);
@@ -108,7 +107,7 @@ export const toggleScheduleTask = (scheduleId: string, dayIndex: number, taskInd
     }
 };
 
-// --- RELATÓRIOS (Restaurados getReports e deleteReport) ---
+// --- RELATÓRIOS ---
 export const getReports = (): SavedReport[] => {
     return JSON.parse(localStorage.getItem(REPORTS_KEY) || '[]');
 };
