@@ -1,7 +1,9 @@
-export type PlanType = 'FREE' | 'PREMIUM';
+// --- TIPOS GERAIS ---
+export type PlanType = 'FREE' | 'PREMIUM' | 'ADVANCED'; // Adicionado ADVANCED para corrigir o erro do paymentService
 export type ImageFilter = 'none' | 'grayscale' | 'contrast';
 
 export interface User {
+  id?: string; // Adicionado id para corrigir erro do databaseService
   name: string;
   email: string;
   avatar?: string;
@@ -16,8 +18,7 @@ export interface UserSettings {
   theme: 'light' | 'dark';
   fontSize: 'small' | 'base' | 'large';
   fontStyle: 'sans' | 'serif' | 'mono';
-  // Adicionados para evitar erro TS2739
-  name?: string; 
+  name?: string;
   targetCourse?: string;
   sisuGoals?: SisuGoal[];
 }
@@ -28,10 +29,10 @@ export interface SisuGoal {
     cutScore: number;
 }
 
+// --- REDAÇÃO ---
 export interface CorrectionResult {
-  // Ajustado para aceitar os dois formatos e evitar erros
   notaTotal?: number;
-  nota_total?: number; 
+  nota_total?: number;
   comentarios: string[];
   competencias?: any[];
   correction?: string;
@@ -47,8 +48,7 @@ export interface ImageData {
   mimeType: string;
 }
 
-// --- NOVOS TIPOS ADICIONADOS PARA CORRIGIR O BUILD ---
-
+// --- SIMULADOS E PROVAS ---
 export interface ExamConfig {
     mode: string;
     targetCourses: string[];
@@ -68,12 +68,52 @@ export interface ExamState {
     activeFilter?: ImageFilter;
 }
 
+// Aliases para compatibilidade com códigos antigos
+export type SavedExam = any; 
+export type QuestionResult = any;
+
+// --- CRONOGRAMAS E ESTUDOS ---
 export interface Schedule {
     id: string;
     createdAt: string;
     weeks: any[];
 }
 
+export type SavedSchedule = Schedule; // Alias
+
+export interface StudyProfile {
+    name: string;
+    availableTime: number; // minutos por dia
+    weaknesses: string[];
+    strengths: string[];
+    targetCourse: string;
+}
+
+export interface StudyScheduleResult {
+    schedule: Schedule;
+    tips: string[];
+}
+
+export interface StudySession {
+    id: string;
+    date: string;
+    duration: number;
+    subject: string;
+}
+
+export interface ExamPerformance {
+    totalQuestions: number;
+    correctAnswers: number;
+    byArea: Record<string, number>;
+}
+
+export interface SisuEstimation {
+    chance: number; // 0 a 100
+    cutScore: number;
+    message: string;
+}
+
+// --- RELATÓRIOS ---
 export interface WeeklyReport {
     id: string;
     userId: string;
@@ -90,9 +130,6 @@ export interface WeeklyReport {
     recommendations: string[];
 }
 
-export interface StudySession {
-    id: string;
-    date: string;
-    duration: number;
-    subject: string;
-}
+// Aliases para compatibilidade
+export type SavedReport = WeeklyReport;
+export type WeeklyReportStats = WeeklyReport;
