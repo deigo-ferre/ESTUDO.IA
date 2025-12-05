@@ -1,0 +1,8 @@
+{
+  "name": "Estude.IA",
+  "description": "SaaS de preparação para o ENEM com correção de redação e simulados via IA.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
