@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useReducer, useCallback } from 'react';
+import { User, ExamConfig, QuestionResult, ExamState, BatchRequest } from '../types';
 import { generateQuestionsBatch, generateEssayTheme, gradeEssay, estimateSisuCutoff, transcribeImage } from '../services/geminiService';
 import { saveExamProgress, getExamById, checkUsageLimit, incrementUsage, getUserSession, upgradeUser, deleteExam, getSettings } from '../services/storageService';
 import { QuestionResult, EssayTheme, CorrectionResult, ExamPerformance, ExamConfig, AreaConhecimento, LinguaEstrangeira, SisuEstimation, BatchRequest, SavedExam } from '../types';
@@ -679,7 +679,7 @@ const ExamResults: React.FC<{
                     </h3>
                     <div className="space-y-4">
                         {performance.sisuComparisons.map((comp, idx) => {
-                            const diff = comp.nota_corte_media - performance.totalScore;
+                            const diff =(comp.nota_corte_media ?? 0)
                             const isApproved = diff <= 0;
                             return (
                                 <div key={idx} className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${isApproved ? (isDark ? 'bg-green-900/20 border-green-900/30' : 'bg-green-50 border-green-200') : (isDark ? 'bg-amber-900/20 border-amber-900/30' : 'bg-amber-50 border-amber-200')}`}>

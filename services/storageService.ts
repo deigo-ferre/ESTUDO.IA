@@ -1,4 +1,4 @@
-import { User, UserSettings, CorrectionResult, ExamState, ExamConfig, PlanType, Schedule, WeeklyReport, SavedExam } from '../types';
+import { User, UserSettings, CorrectionResult, ExamState, ExamConfig, PlanType, Schedule, WeeklyReport, SavedExam, SavedReport } from '../types';
 
 const USER_KEY = 'estude_ia_user';
 const SETTINGS_KEY = 'estude_ia_settings';
@@ -24,9 +24,7 @@ export const clearUserSession = (): void => {
 };
 
 export const getSettings = (): UserSettings => {
-  const defaults: UserSettings = { 
-      theme: 'light', fontSize: 'base', fontStyle: 'sans', name: '', targetCourse: '' 
-  };
+  const defaults: UserSettings = { theme: 'light', fontSize: 'base', fontStyle: 'sans', name: '', targetCourse: '' };
   if (typeof window === 'undefined') return defaults;
   const stored = localStorage.getItem(SETTINGS_KEY);
   const parsed = stored ? JSON.parse(stored) : {};
@@ -75,16 +73,10 @@ export const saveStandaloneEssay = (text: string, result: CorrectionResult): voi
 export const getExams = (): SavedExam[] => JSON.parse(localStorage.getItem(EXAMS_KEY) || '[]');
 export const getExamById = (id: string): SavedExam | undefined => getExams().find((e) => e.id === id);
 
-// CORREÇÃO: Adicionado '...args: any[]' para aceitar argumentos extras sem erro
 export const saveExamProgress = (id: string | null, config: ExamConfig, state: ExamState, status: 'in_progress' | 'completed', ...args: any[]): string => {
   const exams = getExams();
   const examId = id || Date.now().toString();
-  const newExam: SavedExam = { 
-      id: examId, 
-      createdAt: new Date().toISOString(), 
-      updatedAt: new Date().toISOString(),
-      status, config, state 
-  };
+  const newExam: SavedExam = { id: examId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status, config, state };
   const index = exams.findIndex((e) => e.id === examId);
   if (index >= 0) exams[index] = newExam;
   else exams.unshift(newExam);
@@ -97,8 +89,11 @@ export const deleteExam = (id: string): void => {
   localStorage.setItem(EXAMS_KEY, JSON.stringify(exams));
 };
 
+// --- CRONOGRAMAS ---
 export const getSchedules = (): Schedule[] => JSON.parse(localStorage.getItem(SCHEDULES_KEY) || '[]');
-export const saveSchedule = (schedule: Schedule): void => {
+
+// CORREÇÃO: Aceita argumentos extras (...args) para compatibilidade
+export const saveSchedule = (schedule: Schedule, ...args: any[]): void => {
     const list = getSchedules();
     list.push(schedule);
     localStorage.setItem(SCHEDULES_KEY, JSON.stringify(list));
@@ -113,6 +108,16 @@ export const toggleScheduleTask = (scheduleId: string, dayIndex: number, taskInd
     }
 };
 
+// --- RELATÓRIOS (Restaurados getReports e deleteReport) ---
+export const getReports = (): SavedReport[] => {
+    return JSON.parse(localStorage.getItem(REPORTS_KEY) || '[]');
+};
+
+export const deleteReport = (id: string): void => {
+    const list = getReports().filter(r => r.id !== id);
+    localStorage.setItem(REPORTS_KEY, JSON.stringify(list));
+};
+
 export const calculateReportStats = (userId: string, ...args: any[]): WeeklyReport => {
     const now = new Date().toISOString();
     return {
@@ -124,7 +129,7 @@ export const calculateReportStats = (userId: string, ...args: any[]): WeeklyRepo
 };
 
 export const saveReport = (report: WeeklyReport, ...args: any[]): void => {
-    const list = JSON.parse(localStorage.getItem(REPORTS_KEY) || '[]');
+    const list = getReports();
     list.unshift(report);
     localStorage.setItem(REPORTS_KEY, JSON.stringify(list));
 };
