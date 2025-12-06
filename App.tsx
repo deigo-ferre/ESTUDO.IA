@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { gradeEssay, transcribeImage, generateEssayTheme } from './services/geminiService';
 import { saveUserSession, getUserSession, clearUserSession, getSettings, checkUsageLimit, incrementUsage, upgradeUser, saveStandaloneEssay, setUserPlan, getExamById, saveExamProgress } from './services/storageService';
@@ -47,7 +46,8 @@ const App: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<ImageFilter>('none');
   const [isCameraActive, setIsCameraActive] = useState(false);
 
-  const isImageFile = (selectedImage?.startsWith('data:image') && !selectedImage.includes('pdf') && !selectedImage.includes('msword') && !selectedImage.includes('wordprocessingml')) ?? false;
+  // Helper to determine if selectedImage string is actually an image (and not a PDF data URI)
+  const isImageFile = (selectedImage?.startsWith('data:image') && !selectedImage.includes('application/pdf')) ?? false;
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -280,16 +280,19 @@ const App: React.FC = () => {
     if (!file) return;
     setError(null);
     setShowEssayDemo(false);
+    
+    // Robust file type checking
     const isTextFile = file.type.startsWith('text/') || file.name.endsWith('.txt') || file.name.endsWith('.md');
-    const isImageFile = file.type.startsWith('image/');
-    const isPdfFile = file.type === 'application/pdf';
-    const isDocFile = file.type === 'application/msword';
-    const isDocxFile = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const isImageFile = file.type.startsWith('image/') || /\.(jpg|jpeg|png|webp)$/i.test(file.name);
+    const isPdfFile = file.type === 'application/pdf' || file.name.endsWith('.pdf');
+    const isDocFile = file.type === 'application/msword' || file.name.endsWith('.doc');
+    const isDocxFile = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx');
 
     const reader = new FileReader();
     reader.onloadend = async (ev) => {
         if (!ev.target?.result) return;
         const fileContent = ev.target.result as string;
+        
         if (isTextFile) {
             setText(fileContent);
             setSelectedImage(null);
@@ -304,15 +307,27 @@ const App: React.FC = () => {
             setInputMode('text');
             setError(`"${file.name}" anexado. A IA processará o texto diretamente do documento.`);
         } else {
+            // Fallback for other types - treat as attachment
             setSelectedImage(fileContent);
             setText(''); 
             setInputMode('text'); 
             setError(`Arquivo "${file.name}" anexado. A IA tentará processá-lo.`);
         }
+        
+        // Reset input to allow re-uploading the same file if needed
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
-    reader.onerror = () => setError("Erro ao ler o arquivo.");
-    if (isTextFile) reader.readAsText(file);
-    else reader.readAsDataURL(file);
+    
+    reader.onerror = () => {
+        setError("Erro ao ler o arquivo.");
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    if (isTextFile) {
+        reader.readAsText(file);
+    } else {
+        reader.readAsDataURL(file);
+    }
   };
 
   const applyFilterAndGetImage = async (): Promise<ImageData | null> => {
@@ -320,6 +335,8 @@ const App: React.FC = () => {
      const match = selectedImage.match(/^data:(.*);base64,/);
      const mimeType = match ? match[1] : '';
      const base64Content = selectedImage.split(',')[1];
+     
+     // Only apply canvas filtering to images
      if (!mimeType.startsWith('image/')) return { base64: base64Content, mimeType };
 
      return new Promise((resolve) => {
