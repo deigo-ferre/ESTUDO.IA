@@ -41,9 +41,10 @@ const OnboardingGoalSetter: React.FC<OnboardingGoalSetterProps> = ({ user, onCom
         setPendingGoals([]); // Clear previous results
         try {
             const results = await estimateSisuCutoff(courses);
+            // FIX: Added fallbacks to ensure type compatibility with SisuGoal interface
             const goals: SisuGoal[] = results.map(r => ({
-                course: r.curso,
-                cutoff: r.nota_corte_media,
+                course: r.curso || "Curso Desconhecido",
+                cutoff: r.nota_corte_media || 0,
                 lastUpdated: new Date().toLocaleDateString('pt-BR'),
                 source: r.fontes?.[0]
             }));

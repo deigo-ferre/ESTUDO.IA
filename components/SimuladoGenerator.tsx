@@ -1,39 +1,11 @@
-import React, { useState, useEffect, useCallback, useReducer, useRef } from 'react';
-import { 
-    User, 
-    ExamConfig, 
-    QuestionResult, 
-    ExamState, 
-    BatchRequest, 
-    EssayTheme, 
-    CorrectionResult, 
-    ExamPerformance, 
-    AreaConhecimento, 
-    LinguaEstrangeira, 
-    SisuEstimation, 
-    SavedExam 
-} from '../types';
-import { 
-    generateQuestionsBatch, 
-    generateEssayTheme, 
-    gradeEssay, 
-    estimateSisuCutoff, 
-    transcribeImage 
-} from '../services/geminiService';
-import { 
-    saveExamProgress, 
-    getExamById, 
-    checkUsageLimit, 
-    incrementUsage, 
-    getUserSession, 
-    upgradeUser, 
-    deleteExam, 
-    getSettings 
-} from '../services/storageService';
+import React, { useState, useEffect, useRef, useReducer, useCallback } from 'react';
+import { generateQuestionsBatch, generateEssayTheme, gradeEssay, estimateSisuCutoff, transcribeImage } from '../services/geminiService';
+import { saveExamProgress, getExamById, checkUsageLimit, incrementUsage, getUserSession, upgradeUser, deleteExam, getSettings } from '../services/storageService';
+import { QuestionResult, EssayTheme, CorrectionResult, ExamPerformance, ExamConfig, AreaConhecimento, LinguaEstrangeira, SisuEstimation, BatchRequest, SavedExam } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import ResultCard from './ResultCard';
 
-type ImageFilter = 'none' | 'grayscale' | 'contrast';
+// ... (imports remain the same)
 
 const AREAS_INFO = {
   'Linguagens': { color: 'rose', label: 'Linguagens e Códigos' },
@@ -55,7 +27,7 @@ interface ExamStateReducer {
     timeRemaining: number;
     isFinished: boolean;
     isLoading: boolean;
-    loadingProgress: number; 
+    loadingProgress: number; // For fetching questions
     batchQueue: BatchRequest[];
     error: string | null;
 }
@@ -115,8 +87,10 @@ const examReducer = (state: ExamStateReducer, action: ExamAction): ExamStateRedu
     }
 };
 
+type ImageFilter = 'none' | 'grayscale' | 'contrast';
 
 const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () => void }> = ({ onStart, onBack }) => {
+    // ... (Dashboard content same as before)
     const [targetCourse1, setTargetCourse1] = useState('');
     const [targetCourse2, setTargetCourse2] = useState('');
     const [foreignLanguage, setForeignLanguage] = useState<LinguaEstrangeira | undefined>(undefined);
@@ -131,7 +105,7 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
     const inputClass = 'bg-white border-slate-300 text-slate-900 focus:border-indigo-500 outline-none placeholder-slate-400';
     const cardClass = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
 
-    const handleStart = (mode: string, area?: AreaConhecimento) => {
+    const handleStart = (mode: 'day1' | 'day2' | 'area_training' | 'essay_only', area?: AreaConhecimento) => {
         const limit = checkUsageLimit('exam');
         if (!limit.allowed) {
             setError(limit.message || "Limite atingido.");
@@ -307,7 +281,7 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
     );
 };
 
-// --- EXAM RUNNER COMPONENT ---
+// ... (ExamRunner component remain the same)
 const ExamRunner: React.FC<{ 
     config: ExamConfig; 
     questions: (QuestionResult | null)[];
@@ -320,6 +294,7 @@ const ExamRunner: React.FC<{
     onSaveAndExit: () => void;
     onCancel: () => void;
 }> = ({ config, questions, essayTheme, userAnswers, userEssayText, timeRemaining, dispatch, onFinish, onSaveAndExit, onCancel }) => {
+    // ... (Runner implementation, no changes needed for this fix)
     const [currentView, setCurrentView] = useState<'questions' | 'essay'>(config.mode === 'essay_only' ? 'essay' : 'questions');
     const [qIndex, setQIndex] = useState(0);
     const [essayInputMode, setEssayInputMode] = useState<'text' | 'camera' | 'upload' | 'editor'>('text');
@@ -554,7 +529,7 @@ const ExamRunner: React.FC<{
                             <div className={`border-t my-2 pt-2 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
                                 <p className="px-2 text-[10px] font-bold text-slate-500 uppercase mb-2 hidden md:block">Mapa da Prova</p>
                                 <div className="grid grid-cols-1 md:grid-cols-5 gap-1.5 px-1">
-                                    {questions.map((q: any, i: number) => (
+                                    {questions.map((q, i) => (
                                         <button 
                                             key={i} 
                                             disabled={!q}
@@ -583,6 +558,7 @@ const ExamRunner: React.FC<{
                                     <div className="flex items-center justify-between mb-6">
                                         <div className="flex gap-2">
                                             <span className="px-3 py-1 bg-slate-800 text-white text-xs font-bold rounded-full uppercase">Questão {qIndex + 1}</span>
+                                            {/* Fix: Extract questionAreaColor calculation outside the template literal */}
                                             {(() => {
                                                 const questionAreaColor = AREAS_INFO[currentQuestion.area as keyof typeof AREAS_INFO]?.color || 'slate';
                                                 return (
@@ -669,6 +645,7 @@ const ExamResults: React.FC<{
     onStartTurboReview: (topics: string[]) => void;
     onUpgrade: () => void;
 }> = ({ config, performance, onBack, onStartTurboReview, onUpgrade }) => {
+    // ... (ExamResults imports and basic logic)
     const settings = getSettings();
     const isDark = settings.theme === 'dark';
     const textTitle = isDark ? 'text-white' : 'text-slate-800';
@@ -701,13 +678,14 @@ const ExamResults: React.FC<{
             {config.targetCourses && config.targetCourses.length > 0 && performance.sisuComparisons && performance.sisuComparisons.length > 0 && (
                 <div className={`${cardClass} rounded-2xl shadow-sm border p-6 mb-8`}>
                     <h3 className={`text-xl font-bold ${textTitle} mb-4 flex items-center gap-2`}>
-                        <svg className="w-6 h-6 text-fuchsia-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        <svg className="w-6 h-6 text-fuchsia-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                         Comparativo SISU
                     </h3>
                     <div className="space-y-4">
                         {performance.sisuComparisons.map((comp, idx) => {
-                            const diff = Math.round(performance.totalScore) - (comp.nota_corte_media ?? 0);
-                            const isApproved = diff >= 0;
+                            // FIX: Safe check for comp.nota_corte_media
+                            const diff = (comp.nota_corte_media || 0) - performance.totalScore;
+                            const isApproved = diff <= 0;
                             return (
                                 <div key={idx} className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${isApproved ? (isDark ? 'bg-green-900/20 border-green-900/30' : 'bg-green-50 border-green-200') : (isDark ? 'bg-amber-900/20 border-amber-900/30' : 'bg-amber-50 border-amber-200')}`}>
                                     <div>
@@ -716,7 +694,7 @@ const ExamResults: React.FC<{
                                     </div>
                                     <div className="text-right">
                                         <span className={`block text-lg font-black ${isApproved ? 'text-green-600' : 'text-amber-600'}`}>
-                                            {isApproved ? 'APROVADO! 🎉' : `Faltam ${Math.abs(diff).toFixed(1)} pontos`}
+                                            {isApproved ? 'APROVADO! 🎉' : `Faltam ${diff.toFixed(1)} pontos`}
                                         </span>
                                         <p className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{comp.mensagem}</p>
                                         {comp.fontes && comp.fontes.length > 0 && (
@@ -803,8 +781,7 @@ const ExamResults: React.FC<{
     );
 };
 
-// --- MAIN SIMULADO GENERATOR COMPONENT ---
-
+// ... (SimuladoGenerator main component export remains the same)
 const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => void }> = ({ resumeExamId, onBack }) => {
     const [view, setView] = useState<'dashboard' | 'runner' | 'results'>('dashboard');
     const [config, setConfig] = useState<ExamConfig | null>(null);
