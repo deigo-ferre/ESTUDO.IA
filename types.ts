@@ -206,4 +206,4 @@ export interface SavedReport {
     stats: WeeklyReportStats;
 }
 
-export type AppView = 'essay' | 'schedule' | 'simu
+export type AppView = 'essay' | 'schedule' | 'simulado' | 'user_area' | 'settings' | 'admin';

@@ -41,12 +41,30 @@ export const getUserSession = (): User | null => {
   const data = localStorage.getItem(KEYS.USER_SESSION);
   if (!data) return null;
   const user = JSON.parse(data);
-  // Runtime migration
+  
+  // Runtime migration & Defaulting
   user.planType = user.planType || 'FREE';
   user.hasSeenOnboarding = user.hasSeenOnboarding ?? false;
   user.hasSeenOnboardingGoalSetter = user.hasSeenOnboardingGoalSetter ?? false;
   user.hasSeenEssayDemo = user.hasSeenEssayDemo ?? false;
-  user.usage = user.usage || { essaysCount: 0, examsCount: 0, schedulesCount: 0, lastEssayDate: null, lastExamDate: null, lastScheduleDate: null };
+  
+  // Ensure usage object is complete
+  if (!user.usage) {
+      user.usage = { 
+          essaysCount: 0, 
+          lastEssayDate: null, 
+          examsCount: 0, 
+          lastExamDate: null, 
+          schedulesCount: 0, 
+          lastScheduleDate: null 
+      };
+  } else {
+      // Ensure all fields exist in usage
+      user.usage.essaysCount = user.usage.essaysCount || 0;
+      user.usage.examsCount = user.usage.examsCount || 0;
+      user.usage.schedulesCount = user.usage.schedulesCount || 0;
+  }
+
   user.tokensConsumed = user.tokensConsumed || 0;
   return user;
 };
@@ -56,7 +74,8 @@ export const clearUserSession = () => localStorage.removeItem(KEYS.USER_SESSION)
 export const checkUsageLimit = (type: 'essay' | 'exam' | 'schedule'): { allowed: boolean; message?: string } => {
     const user = getUserSession();
     if (!user) return { allowed: false, message: "Usuário não logado." };
-    // Defensive check
+    
+    // Defensive check (though getUserSession handles it)
     if (!user.usage) {
         user.usage = { essaysCount: 0, lastEssayDate: null, examsCount: 0, lastExamDate: null, schedulesCount: 0, lastScheduleDate: null };
     }
@@ -101,7 +120,6 @@ export const incrementUsage = (type: 'essay' | 'exam' | 'schedule') => {
     const user = getUserSession();
     if (!user) return;
     
-    // Ensure usage exists
     if (!user.usage) {
         user.usage = { essaysCount: 0, lastEssayDate: null, examsCount: 0, lastExamDate: null, schedulesCount: 0, lastScheduleDate: null };
     }
