@@ -1,377 +1,211 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { CorrectionResult, ImageData, StudyProfile, StudyScheduleResult, QuestionResult, EssayTheme, SisuEstimation } from "../types";
-import { logTokens } from "./storageService";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { 
+    QuestionResult, 
+    EssayTheme, 
+    CorrectionResult, 
+    StudyProfile, 
+    StudyScheduleResult, 
+    SisuEstimation, 
+    ImageData 
+} from '../types';
 
-// --- CONFIGURAÇÃO DA API KEY (VITE) ---
-// Safe access to import.meta.env
-const apiKey = import.meta.env?.VITE_GEMINI_API_KEY || '';
+// Inicializa a API
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const genAI = new GoogleGenerativeAI(API_KEY);
 
-if (!apiKey) {
-    console.warn("⚠️ Nenhuma API Key encontrada. Configure VITE_GEMINI_API_KEY no arquivo .env local.");
-}
-
-const ai = new GoogleGenAI({ apiKey: apiKey });
-
-const estimateTokens = (text: string) => Math.ceil(text.length / 4);
-
-const SISU_CACHE_KEY = 'enem_ai_sisu_cache_v1';
-
-const STATIC_SISU_DB: Record<string, SisuEstimation> = {
-    'medicina usp': { curso: 'Medicina (USP - Pinheiros)', nota_corte_media: 834.56, nota_corte_min: 815, nota_corte_max: 850, ano_referencia: 'SISU 2023/24', mensagem: 'Dado oficial USP (Ampla Concorrência).', fontes: ['https://www.fuvest.br'] },
-    'medicina unifesp': { curso: 'Medicina (UNIFESP)', nota_corte_media: 798.20, nota_corte_min: 795, nota_corte_max: 805, ano_referencia: 'SISU 2023', mensagem: 'Dado oficial UNIFESP.', fontes: ['https://www.unifesp.br'] },
-    'direito usp': { curso: 'Direito (USP)', nota_corte_media: 765.40, nota_corte_min: 750, nota_corte_max: 780, ano_referencia: 'SISU 2023', mensagem: 'Dado oficial SanFran.', fontes: ['https://www.fuvest.br'] },
+// Função auxiliar para limpar o JSON que o Gemini retorna (remove ```json e ```)
+const cleanJSON = (text: string) => {
+    return text.replace(/```json/g, '').replace(/```/g, '').trim();
 };
 
-const normalizeKey = (text: string) => text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-
-const getCachedSisu = (key: string): SisuEstimation | null => {
-    if (STATIC_SISU_DB[key]) return STATIC_SISU_DB[key];
-    const staticKey = Object.keys(STATIC_SISU_DB).find(k => key.includes(k) || k.includes(key));
-    if (staticKey) return STATIC_SISU_DB[staticKey];
+// Função genérica para chamadas seguras
+const callGemini = async (prompt: string, temp = 0.7) => {
+    if (!API_KEY) throw new Error("Chave de API do Gemini não configurada.");
     try {
-        const cacheRaw = localStorage.getItem(SISU_CACHE_KEY);
-        if (cacheRaw) {
-            const cache = JSON.parse(cacheRaw);
-            if (cache[key]) return cache[key];
-        }
-    } catch (e) { console.warn("Cache error", e); }
-    return null;
-};
-
-const saveToSisuCache = (key: string, data: SisuEstimation) => {
-    try {
-        const cacheRaw = localStorage.getItem(SISU_CACHE_KEY);
-        const cache = cacheRaw ? JSON.parse(cacheRaw) : {};
-        cache[key] = data;
-        localStorage.setItem(SISU_CACHE_KEY, JSON.stringify(cache));
-    } catch (e) { console.warn("Cache save error", e); }
-};
-
-const correctionSchema = {
-  type: Type.OBJECT,
-  properties: {
-    nota_total: { type: Type.NUMBER },
-    competencias: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          nome: { type: Type.STRING },
-          nota: { type: Type.NUMBER },
-          feedback: { type: Type.STRING }
-        },
-        required: ["nome", "nota", "feedback"]
-      }
-    },
-    comentario_geral: { type: Type.STRING },
-    melhorias: { type: Type.ARRAY, items: { type: Type.STRING } }
-  },
-  required: ["nota_total", "competencias", "comentario_geral", "melhorias"]
-};
-
-const scheduleSchema = {
-  type: Type.OBJECT,
-  properties: {
-    diagnostico: { type: Type.STRING },
-    semana: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          dia: { type: Type.STRING },
-          materias: { 
-              type: Type.ARRAY, 
-              items: { 
-                  type: Type.OBJECT,
-                  properties: {
-                      name: { type: Type.STRING },
-                      snippet: { type: Type.STRING, description: "Resumo curto de 2 linhas sobre o tópico." }
-                  },
-                  required: ["name", "snippet"]
-              } 
-          },
-          foco: { type: Type.STRING }
-        },
-        required: ["dia", "materias", "foco"]
-      }
-    },
-    dicas_personalizadas: { type: Type.ARRAY, items: { type: Type.STRING } }
-  },
-  required: ["semana", "dicas_personalizadas"]
-};
-
-const questionBatchSchema = {
-  type: Type.OBJECT,
-  properties: {
-    questoes: {
-        type: Type.ARRAY,
-        items: {
-            type: Type.OBJECT,
-            properties: {
-                origem: { type: Type.STRING },
-                enunciado: { type: Type.STRING },
-                alternativas: { type: Type.ARRAY, items: { type: Type.STRING } },
-                correta_index: { type: Type.NUMBER },
-                explicacao: { type: Type.STRING },
-                materia: { type: Type.STRING },
-                topic: { type: Type.STRING },
-                difficulty: { type: Type.STRING, enum: ['easy', 'medium', 'hard'] }
-            },
-            required: ["origem", "enunciado", "alternativas", "correta_index", "explicacao", "materia", "difficulty"]
-        }
-    }
-  },
-  required: ["questoes"]
-};
-
-const essayThemeSchema = {
-  type: Type.OBJECT,
-  properties: {
-    titulo: { type: Type.STRING },
-    textos_motivadores: { type: Type.ARRAY, items: { type: Type.STRING } },
-    origem: { type: Type.STRING }
-  },
-  required: ["titulo", "textos_motivadores", "origem"]
-};
-
-export const transcribeImage = async (image: ImageData): Promise<string> => {
-  const modelId = "gemini-2.5-flash";
-  const promptText = `Transcreva o texto desta imagem exatemente como está. Ignore rasuras. Mantenha pontuação.`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: {
-        parts: [
-          { inlineData: { mimeType: image.mimeType, data: image.base64 } },
-          { text: promptText }
-        ]
-      },
-      config: { temperature: 0.1 }
-    });
-    
-    const output = response.text || "";
-    const inputTokens = estimateTokens(promptText) + 258;
-    const outputTokens = estimateTokens(output);
-    logTokens(inputTokens + outputTokens);
-
-    return output;
-  } catch (error) {
-    console.error("Transcription error", error);
-    throw new Error("Erro na transcrição de imagem.");
-  }
-};
-
-export const gradeEssay = async (text: string, image?: ImageData | null, theme?: EssayTheme | null): Promise<CorrectionResult> => {
-  const modelId = "gemini-2.5-flash"; 
-  let promptText = `Corrija a redação ENEM baseada nas 5 competências. Rigor oficial.`;
-  
-  if (theme) {
-      promptText += `\n\nATENÇÃO AO TEMA PROPOSTO:\nTítulo: "${theme.titulo}"\nUse este tema para avaliar a Competência 2 (Fuga ao tema) e Competência 3. Se o texto fugir deste tema, penalize severamente.\n`;
-  }
-
-  // Explicitly type parts array as any to allow pushing different types of parts
-  const contents: any[] = [];
-
-  if (image) {
-    promptText += `\nUse o documento/imagem fornecido como referência visual. O texto transcrito é o seguinte: "${text}"`;
-    contents.push({ inlineData: { mimeType: image.mimeType, data: image.base64 } });
-  } else {
-    promptText += `\nTexto do Aluno: "${text}"`;
-  }
-  contents.push({ text: promptText });
-
-  try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts: contents },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: correctionSchema,
-        temperature: 0.2,
-      }
-    });
-
-    const output = response.text!;
-    const inputTokens = estimateTokens(promptText) + (image ? 258 : 0);
-    const outputTokens = estimateTokens(output);
-    logTokens(inputTokens + outputTokens);
-
-    return JSON.parse(output) as CorrectionResult;
-  } catch (error) {
-    console.error("Essay grading error", error);
-    throw new Error("Erro ao corrigir redação.");
-  }
-};
-
-export const generateStudySchedule = async (profile: StudyProfile): Promise<StudyScheduleResult> => {
-  const modelId = "gemini-2.5-flash";
-  let promptText = "";
-
-  if (profile.scores) {
-      promptText = `Crie cronograma ENEM para ${profile.course}. Tempo: ${profile.hoursPerDay}. Notas: Ling ${profile.scores.linguagens}, Hum ${profile.scores.humanas}, Nat ${profile.scores.natureza}, Mat ${profile.scores.matematica}, Red ${profile.scores.redacao}. Regra: Tempo inversamente proporcional à nota. Priorize pesos do SISU. IMPORTANTE: Para cada matéria, forneça um 'snippet' (resumo curto explicativo) no JSON.`;
-  } else {
-      promptText = `Crie cronograma ENEM para ${profile.course}. Tempo: ${profile.hoursPerDay}. Dificuldades: ${profile.difficulties}. IMPORTANTE: Para cada matéria, forneça um 'snippet' (resumo curto explicativo) no JSON.`;
-  }
-
-  try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { text: promptText },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: scheduleSchema,
-        temperature: 0.6,
-      }
-    });
-    
-    const output = response.text!;
-    logTokens(estimateTokens(promptText) + estimateTokens(output));
-
-    return JSON.parse(output) as StudyScheduleResult;
-  } catch (error) {
-    console.error("Schedule generation error", error);
-    throw new Error("Erro ao gerar cronograma.");
-  }
-};
-
-export const generateQuestionsBatch = async (area: string, count: number, foreignLanguage?: string, isForeignBatch: boolean = false, turboTopics?: string[]): Promise<QuestionResult[]> => {
-  const modelId = "gemini-2.5-flash";
-  let promptContext = "";
-  
-  if (turboTopics && turboTopics.length > 0) {
-      promptContext = `MODO REVISÃO INTENSIVA (TURBO). Foque exclusivamente nestes tópicos onde o aluno errou anteriormente: ${turboTopics.join(', ')}. Gere questões para sanar essas dúvidas específicas. Nível: Médio/Difícil.`;
-  } else if (isForeignBatch && foreignLanguage) {
-      promptContext = `IDIOMA: ${foreignLanguage.toUpperCase()}. Enunciado e Texto Base em ${foreignLanguage}. Foco: Interpretação de texto.`;
-  } else {
-     promptContext = `Área: ${area}. Gere questões variadas e de alta qualidade. Defina "difficulty" (easy/medium/hard).`;
-  }
-
-  const promptText = `Gere EXATAMENTE ${count} questões no formato JSON para o ENEM. ${promptContext} Tente usar questões reais ou crie simulados perfeitos.`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { text: promptText },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: questionBatchSchema,
-        temperature: 0.5, 
-      }
-    });
-
-    const output = response.text!;
-    logTokens(estimateTokens(promptText) + estimateTokens(output));
-
-    const parsed = JSON.parse(output);
-    return parsed.questoes.map((q: any) => ({
-        ...q,
-        area: area,
-        materia: q.materia || (isForeignBatch ? foreignLanguage : area),
-        topic: q.topic || 'Geral'
-    }));
-
-  } catch (error) {
-    console.error("Erro ao gerar batch de questões:", error);
-    return [];
-  }
-};
-
-export const estimateSisuCutoff = async (courses: string[]): Promise<SisuEstimation[]> => {
-    const results: SisuEstimation[] = [];
-    const missingCourses: string[] = [];
-
-    for (const course of courses) {
-        const normalized = normalizeKey(course);
-        const cached = getCachedSisu(normalized);
-        if (cached) {
-            results.push({ ...cached, curso: course });
-        } else {
-            missingCourses.push(course);
-        }
-    }
-
-    if (missingCourses.length === 0) return results;
-
-    const modelId = "gemini-2.5-flash";
-    const prompt = `Pesquise no Google as notas de corte OFICIAIS do SISU (Ampla Concorrência) dos últimos anos (2023, 2024) para os seguintes cursos: ${missingCourses.join(', ')}. REGRAS RIGOROSAS: 1. Use APENAS dados reais encontrados na busca. NÃO INVENTE. 2. Se não encontrar o curso específico, procure o mais próximo na mesma universidade ou região. 3. Calcule a média simples entre 2023 e 2024 se disponível. 4. Retorne a resposta ESTRITAMENTE como um array JSON válido. O formato do JSON deve ser: [{ "curso_pesquisado": "...", "curso_encontrado": "...", "nota_corte_media": 750.5, "nota_corte_min": 740, "nota_corte_max": 760, "ano_referencia": "Média SISU 2023/24", "mensagem": "..." }]`;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: modelId,
-            contents: { text: prompt },
-            config: {
-                tools: [{ googleSearch: {} }],
-            }
+        // Usa o modelo Flash que é mais rápido para apps
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            generationConfig: { temperature: temp }
         });
-        
-        const outputText = response.text || "";
-        logTokens(estimateTokens(prompt) + estimateTokens(outputText));
-
-        const sources: string[] = [];
-        if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
-            response.candidates[0].groundingMetadata.groundingChunks.forEach((chunk: any) => {
-                if (chunk.web?.uri) sources.push(chunk.web.uri);
-            });
-        }
-        const uniqueSources = [...new Set(sources)];
-
-        const jsonMatch = outputText.match(/\[[\s\S]*\]/);
-        
-        if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
-            const newResults = parsed.map((item: any) => {
-                const resultObj: SisuEstimation = {
-                    curso: item.curso_encontrado || item.curso_pesquisado,
-                    nota_corte_media: item.nota_corte_media,
-                    nota_corte_min: item.nota_corte_min,
-                    nota_corte_max: item.nota_corte_max,
-                    ano_referencia: item.ano_referencia,
-                    mensagem: item.mensagem,
-                    fontes: uniqueSources
-                };
-                if (item.curso_pesquisado) saveToSisuCache(normalizeKey(item.curso_pesquisado), resultObj);
-                return resultObj;
-            });
-            return [...results, ...newResults];
-        } else {
-             throw new Error("Formato JSON não encontrado na resposta da busca.");
-        }
-    } catch (e) {
-        console.error("Erro no Grounding SISU:", e);
-        const fallbacks = missingCourses.map(c => ({
-            curso: c,
-            nota_corte_media: 700, 
-            nota_corte_min: 600,
-            nota_corte_max: 800,
-            ano_referencia: "Estimativa (Sem dados reais)",
-            mensagem: "Não foi possível verificar a nota real no momento."
-        }));
-        return [...results, ...fallbacks];
+        const response = await result.response;
+        return response.text();
+    } catch (error) {
+        console.error("Erro na API Gemini:", error);
+        throw new Error("Falha ao conectar com a Inteligência Artificial. Tente novamente.");
     }
-}
+};
 
+// --- 1. GERAR QUESTÕES ---
+export const generateQuestionsBatch = async (
+    area: string, 
+    count: number, 
+    language?: string, 
+    isForeign: boolean = false, 
+    topics?: string[]
+): Promise<QuestionResult[]> => {
+    let topicInstruction = topics && topics.length > 0 
+        ? `Foque EXCLUSIVAMENTE nos seguintes tópicos: ${topics.join(', ')}.` 
+        : "Distribua os tópicos conforme a matriz de referência do ENEM.";
+
+    let langInstruction = isForeign && language 
+        ? `As questões devem ser de Língua Estrangeira (${language}). O texto base deve ser em ${language} e o enunciado/alternativas em Português, padrão ENEM.` 
+        : "";
+
+    const prompt = `
+        Crie ${count} questões inéditas estilo ENEM da área de ${area}.
+        ${topicInstruction}
+        ${langInstruction}
+        
+        RETORNE APENAS UM ARRAY JSON VÁLIDO. Sem texto antes ou depois.
+        Formato de cada objeto no array:
+        {
+            "id": "gerado_agora",
+            "origem": "Simulado IA",
+            "enunciado": "Texto da questão...",
+            "alternativas": ["A", "B", "C", "D", "E"],
+            "correta_index": 0 (0 para A, 1 para B...),
+            "explicacao": "Por que a alternativa correta é a certa...",
+            "materia": "Matéria específica (ex: Geografia)",
+            "area": "${area}",
+            "difficulty": "medium",
+            "topic": "Tópico principal da questão"
+        }
+    `;
+
+    const text = await callGemini(prompt, 0.8);
+    try {
+        return JSON.parse(cleanJSON(text));
+    } catch (e) {
+        console.error("Erro ao fazer parse das questões", text);
+        return []; // Retorna vazio em vez de quebrar
+    }
+};
+
+// --- 2. GERAR TEMA DE REDAÇÃO ---
 export const generateEssayTheme = async (): Promise<EssayTheme> => {
-  const modelId = "gemini-2.5-flash";
-  const promptText = `Gere um tema de redação ENEM completo. O tema pode ser uma proposta anterior do ENEM ou um tema ATUAL E EM ALTA NO MOMENTO. Retorne apenas o JSON com título e textos motivadores (curtos).`;
+    const prompt = `
+        Gere um tema de redação estilo ENEM inédito e atual.
+        RETORNE APENAS JSON:
+        {
+            "titulo": "Título do Tema",
+            "textos_motivadores": ["Texto 1 curto...", "Texto 2 curto...", "Texto 3 curto..."],
+            "origem": "Inédito IA"
+        }
+    `;
+    const text = await callGemini(prompt, 0.9);
+    return JSON.parse(cleanJSON(text));
+};
 
-  try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { text: promptText },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: essayThemeSchema,
-        temperature: 0.8,
-      }
-    });
+// --- 3. CORRIGIR REDAÇÃO ---
+export const gradeEssay = async (essayText: string, image?: ImageData, theme?: EssayTheme | null): Promise<CorrectionResult> => {
+    let imagePart = null;
+    // Se tiver imagem (foto da redação), prepara para enviar
+    if (image) {
+        // Nota: O SDK processa imagens, mas aqui vamos focar no texto transcrito se disponível
+        // Se quiser enviar imagem real, precisa usar model.generateContent([prompt, imagePart])
+    }
 
-    const output = response.text!;
-    logTokens(estimateTokens(promptText) + estimateTokens(output));
+    const themeTitle = theme ? theme.titulo : "Tema Livre";
     
-    return JSON.parse(output) as EssayTheme;
-  } catch (error) {
-    console.error("Theme generation error", error);
-    throw new Error("Erro ao gerar tema.");
-  }
+    const prompt = `
+        Aja como um corretor oficial do ENEM muito rigoroso.
+        Tema: ${themeTitle}
+        Redação do aluno:
+        "${essayText}"
+
+        Avalie com base nas 5 competências (0 a 200 pontos cada).
+        RETORNE APENAS JSON:
+        {
+            "nota_total": 0,
+            "competencias": [
+                { "nome": "Competência 1", "nota": 0, "feedback": "..." },
+                { "nome": "Competência 2", "nota": 0, "feedback": "..." },
+                { "nome": "Competência 3", "nota": 0, "feedback": "..." },
+                { "nome": "Competência 4", "nota": 0, "feedback": "..." },
+                { "nome": "Competência 5", "nota": 0, "feedback": "..." }
+            ],
+            "comentario_geral": "Visão geral...",
+            "melhorias": ["Dica prática 1", "Dica prática 2", "Dica prática 3"]
+        }
+    `;
+
+    const text = await callGemini(prompt, 0.4); // Temperatura baixa para ser mais preciso
+    return JSON.parse(cleanJSON(text));
+};
+
+// --- 4. ESTIMAR NOTA SISU ---
+export const estimateSisuCutoff = async (courses: string[]): Promise<SisuEstimation[]> => {
+    const prompt = `
+        Para cada um destes cursos/faculdades: ${courses.join(', ')}.
+        Estime a nota de corte do SISU (Ampla Concorrência) com base nos dados históricos mais recentes (2023/2024).
+        RETORNE APENAS ARRAY JSON:
+        [
+            {
+                "curso": "Nome do Curso - Universidade",
+                "nota_corte_media": 000.0,
+                "nota_corte_min": 000.0,
+                "nota_corte_max": 000.0,
+                "ano_referencia": "2023",
+                "mensagem": "Comentário sobre a dificuldade (Fácil/Médio/Difícil)",
+                "fontes": ["Fonte aproximada"]
+            }
+        ]
+    `;
+    const text = await callGemini(prompt, 0.5);
+    return JSON.parse(cleanJSON(text));
+};
+
+// --- 5. GERAR CRONOGRAMA ---
+export const generateStudySchedule = async (profile: StudyProfile): Promise<StudyScheduleResult> => {
+    const prompt = `
+        Crie um cronograma de estudos semanal para um aluno com o seguinte perfil:
+        - Foco: ${profile.targetCourse || profile.course}
+        - Tempo: ${profile.availableTime} minutos/dia
+        - Dificuldades: ${typeof profile.difficulties === 'string' ? profile.difficulties : profile.difficulties.join(', ')}
+        
+        RETORNE APENAS JSON no formato:
+        {
+            "schedule": {
+                "weeks": [
+                    {
+                        "days": [
+                            { 
+                                "dia": "Segunda", 
+                                "foco": "Foco do dia", 
+                                "materias": ["Matéria 1 - Tópico", "Matéria 2 - Tópico"],
+                                "tasks": [ { "id": "1", "text": "Estudar X", "completed": false } ]
+                            },
+                            ... (até Domingo)
+                        ]
+                    }
+                ]
+            },
+            "tips": ["Dica 1", "Dica 2"]
+        }
+    `;
+    const text = await callGemini(prompt, 0.7);
+    return JSON.parse(cleanJSON(text));
+};
+
+// --- 6. TRANSCREVER IMAGEM (OCR) ---
+export const transcribeImage = async (image: ImageData): Promise<string> => {
+    if (!API_KEY) throw new Error("API Key ausente");
+    try {
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const result = await model.generateContent([
+            "Transcreva APENAS o texto manuscrito desta imagem. Corrija erros óbvios de ortografia, mas mantenha a estrutura. Não adicione comentários.",
+            {
+                inlineData: {
+                    data: image.base64,
+                    mimeType: image.mimeType
+                }
+            }
+        ]);
+        const response = await result.response;
+        return response.text().trim();
+    } catch (error) {
+        console.error("Erro OCR:", error);
+        throw new Error("Não foi possível ler a imagem.");
+    }
 };
