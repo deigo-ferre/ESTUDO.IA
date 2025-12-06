@@ -18,6 +18,7 @@ export interface User {
   hasSeenOnboarding?: boolean;
   hasSeenOnboardingGoalSetter?: boolean;
   hasSeenEssayDemo?: boolean;
+  hasSelectedPlan?: boolean; // Nova propriedade
   planType: PlanType;
   usage: UserUsage;
   tokensConsumed: number;

@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { getSchedules, getExams, getSettings, getUserSession, toggleScheduleTask, calculateReportStats, saveReport, saveUserSession } from '../services/storageService';
 import { SavedSchedule, SavedExam, UserSettings, User, SisuGoal } from '../types';
@@ -319,7 +320,7 @@ const PerformanceHub: React.FC<{ exams: SavedExam[], isDark: boolean }> = ({ exa
     );
 };
 
-const UserDashboard: React.FC<{ onResumeExam: (id: string) => void; onChangeView: (view: string) => void; onLogout: () => void; }> = ({ onResumeExam, onChangeView, onLogout }) => {
+const UserDashboard: React.FC<{ onResumeExam: (id: string) => void; onChangeView: (view: string) => void; onLogout: () => void; onUpgrade?: () => void; }> = ({ onResumeExam, onChangeView, onLogout, onUpgrade }) => {
     const [user] = useState<User | null>(getUserSession());
     const [settings] = useState<UserSettings>(getSettings());
     const [activeExams, setActiveExams] = useState<SavedExam[]>([]);
@@ -381,10 +382,24 @@ const UserDashboard: React.FC<{ onResumeExam: (id: string) => void; onChangeView
                 </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4"> {/* Changed to grid-cols-2 for mobile dashboard consistency */}
+            {/* UPGRADE BANNER - ONLY FOR FREE/ADVANCED USERS */}
+            {user.planType !== 'PREMIUM' && onUpgrade && (
+                <div className="bg-gradient-to-r from-fuchsia-600 to-purple-600 rounded-2xl p-6 text-white shadow-lg flex flex-col sm:flex-row justify-between items-center relative overflow-hidden gap-4">
+                    <div className="relative z-10">
+                        <h3 className="text-xl font-bold mb-1 flex items-center gap-2">🚀 Acelere sua Aprovação</h3>
+                        <p className="text-sm opacity-90">Desbloqueie simulados ilimitados, correção prioritária e revisão turbo com IA.</p>
+                    </div>
+                    <button onClick={onUpgrade} className="relative z-10 bg-white text-fuchsia-600 px-6 py-2 rounded-xl font-bold hover:bg-fuchsia-50 shadow-md transition-all whitespace-nowrap">
+                        Fazer Upgrade Agora
+                    </button>
+                    <div className="absolute -left-10 -bottom-20 w-64 h-64 bg-white opacity-10 rounded-full blur-2xl pointer-events-none"></div>
+                </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <SisuSummaryCard goals={settings.sisuGoals || []} currentScore={currentScore} isDark={isDark} />
                 <KPICard label="Redações" value={completedExams.filter(e => e.performance?.essayResult).length} color="rose" isDark={isDark} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>} subtext="Textos corrigidos pela IA" />
-                <KPICard label="Simulados" value={completedExams.filter(e => e.config.mode !== 'essay_only').length} color="blue" isDark={isDark} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>} subtext="Treinos e Provas Completas" />
+                <KPICard label="Simulados" value={completedExams.filter(e => e.config.mode !== 'essay_only').length} color="blue" isDark={isDark} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>} subtext="Treinos e Provas Completas" />
                 <KPICard label="Cronograma" value={totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0} suffix="%" color="emerald" isDark={isDark} icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} subtext="Progresso Semanal" />
             </div>
 

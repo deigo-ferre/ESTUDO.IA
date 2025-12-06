@@ -61,6 +61,8 @@ const App: React.FC = () => {
         // Direct admin check on load
         if (storedUser.isAdmin) {
             setCurrentView('admin');
+        } else if (!storedUser.hasSelectedPlan) { // Apenas se ainda não escolheu plano
+            setShowPlanSelection(true);
         } else if (!storedUser.hasSeenOnboardingGoalSetter && (!storedSettings.sisuGoals || storedSettings.sisuGoals.length === 0)) {
             setShowGoalSetter(true);
         } else if (!storedUser.hasSeenOnboarding) {
@@ -110,20 +112,23 @@ const App: React.FC = () => {
     
     setUser(newUser);
     saveUserSession(newUser);
-    if (!newUser.hasSeenOnboardingGoalSetter && (!settings.sisuGoals || settings.sisuGoals.length === 0)) {
-        setShowGoalSetter(true);
-    } else if (newUser.planType === 'FREE') {
+
+    // LOGICA CORRIGIDA: Só mostra seleção de plano se o usuário ainda não escolheu.
+    if (!newUser.hasSelectedPlan) {
         setShowPlanSelection(true);
+    } else if (!newUser.hasSeenOnboardingGoalSetter && (!settings.sisuGoals || settings.sisuGoals.length === 0)) {
+        setShowGoalSetter(true);
     } else if (!newUser.hasSeenOnboarding) {
         setShowTour(true);
     }
   };
 
   const handlePlanSelect = (plan: PlanType) => {
-      setUserPlan(plan);
+      setUserPlan(plan); // Isso atualiza hasSelectedPlan = true
       const updatedUser = getUserSession();
       if(updatedUser) setUser(updatedUser);
       setShowPlanSelection(false);
+      
       if (updatedUser && !updatedUser.hasSeenOnboardingGoalSetter && (!settings.sisuGoals || settings.sisuGoals.length === 0)) {
           setShowGoalSetter(true);
       } else if (updatedUser && !updatedUser.hasSeenOnboarding) {
@@ -138,8 +143,8 @@ const App: React.FC = () => {
           saveUserSession(updatedUser);
           setUser(updatedUser);
           setShowGoalSetter(false);
-          if (updatedUser.planType === 'FREE') setShowPlanSelection(true);
-          else if (!updatedUser.hasSeenOnboarding) setShowTour(true);
+          // Se o usuário já escolheu o plano (que deve ter escolhido antes de chegar aqui), verifica tour
+          if (!updatedUser.hasSeenOnboarding) setShowTour(true);
       }
   };
 
@@ -496,6 +501,7 @@ const App: React.FC = () => {
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" x2="21" y1="9" y2="9"/><path d="m9 16 3-3 3 3"/></svg>
                     </button>
                 )}
+                {/* UPGRADE BUTTON - Only shows if NOT Premium */}
                 {user.planType !== 'PREMIUM' && (
                     <button onClick={handleUpgradeClick} className="hidden md:block bg-gradient-to-r from-fuchsia-600 to-purple-600 text-white text-xs font-bold px-3 py-1.5 rounded-full hover:shadow-lg transition-all animate-pulse">
                         {user.planType === 'FREE' ? 'SEJA PREMIUM' : 'UPGRADE'}
@@ -516,7 +522,7 @@ const App: React.FC = () => {
         ) : currentView === 'simulado' ? (
             <SimuladoGenerator resumeExamId={resumeExamId} onBack={handleBackToDashboard} />
         ) : currentView === 'user_area' ? (
-            <UserDashboard onResumeExam={navigateToResumeExam} onChangeView={handleChangeView} onLogout={handleLogout} />
+            <UserDashboard onResumeExam={navigateToResumeExam} onChangeView={handleChangeView} onLogout={handleLogout} onUpgrade={handleUpgradeClick} />
         ) : currentView === 'settings' ? (
             <SettingsPage onUpdateUser={handleUpdateUser} onUpdateSettings={setSettings} onBack={handleBackToDashboard} onResumeExam={navigateToResumeExam} />
         ) : (

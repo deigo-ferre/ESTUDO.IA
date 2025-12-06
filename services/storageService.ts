@@ -5,8 +5,35 @@ const KEYS = {
   EXAMS: 'enem_ai_exams_v2',
   SETTINGS: 'enem_ai_settings_v2',
   USER_SESSION: 'enem_ai_user_session_v2',
+  USERS_DB: 'enem_ai_users_db_v1', // Novo "banco de dados" local
   REPORTS: 'enem_ai_reports_v2'
 };
+
+// --- USER DATABASE SIMULATION ---
+// Permite que dados persistam após logout
+
+export const getUsersDb = (): User[] => {
+    const data = localStorage.getItem(KEYS.USERS_DB);
+    return data ? JSON.parse(data) : [];
+};
+
+const saveUserToDb = (user: User) => {
+    const users = getUsersDb();
+    const index = users.findIndex(u => u.email === user.email);
+    if (index >= 0) {
+        users[index] = user;
+    } else {
+        users.push(user);
+    }
+    localStorage.setItem(KEYS.USERS_DB, JSON.stringify(users));
+};
+
+export const authenticateUser = (email: string): User | null => {
+    const users = getUsersDb();
+    return users.find(u => u.email === email) || null;
+};
+
+// --- SETTINGS ---
 
 export const getSettings = (): UserSettings => {
   const data = localStorage.getItem(KEYS.SETTINGS);
@@ -15,6 +42,8 @@ export const getSettings = (): UserSettings => {
 
 export const saveSettings = (settings: UserSettings) => localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
 
+// --- SESSION ---
+
 export const saveUserSession = (user: User) => {
   const userWithDefaults: User = {
     ...user,
@@ -22,6 +51,7 @@ export const saveUserSession = (user: User) => {
     hasSeenOnboarding: user.hasSeenOnboarding ?? false,
     hasSeenOnboardingGoalSetter: user.hasSeenOnboardingGoalSetter ?? false,
     hasSeenEssayDemo: user.hasSeenEssayDemo ?? false,
+    hasSelectedPlan: user.hasSelectedPlan ?? false,
     usage: {
         essaysCount: user.usage?.essaysCount || 0,
         lastEssayDate: user.usage?.lastEssayDate || null,
@@ -32,7 +62,13 @@ export const saveUserSession = (user: User) => {
     },
     tokensConsumed: user.tokensConsumed || 0
   };
+  
+  // Salva na sessão atual
   localStorage.setItem(KEYS.USER_SESSION, JSON.stringify(userWithDefaults));
+  
+  // Salva no "banco de dados" persistente
+  saveUserToDb(userWithDefaults);
+
   const settings = getSettings();
   saveSettings({ ...settings, name: user.name });
 };
@@ -47,6 +83,7 @@ export const getUserSession = (): User | null => {
   user.hasSeenOnboarding = user.hasSeenOnboarding ?? false;
   user.hasSeenOnboardingGoalSetter = user.hasSeenOnboardingGoalSetter ?? false;
   user.hasSeenEssayDemo = user.hasSeenEssayDemo ?? false;
+  user.hasSelectedPlan = user.hasSelectedPlan ?? false;
   
   // Ensure usage object is complete
   if (!user.usage) {
@@ -167,6 +204,7 @@ export const setUserPlan = (plan: PlanType) => {
     const user = getUserSession();
     if (user) {
         user.planType = plan;
+        user.hasSelectedPlan = true; // Confirma que um plano foi escolhido
         saveUserSession(user);
     }
 }
