@@ -1,72 +1,40 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { User, SavedReport, WeeklyReportStats, WeeklyReport } from '../types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { User, SavedReport, WeeklyReportStats } from '../types';
 import { calculateReportStats, saveReport } from '../services/storageService';
 
 interface WeeklyReportModalProps {
     onClose: () => void;
     user: User;
-    existingReport?: SavedReport; // Modo visualização se existir
+    existingReport?: SavedReport; // If provided, viewing mode. If null, creation mode.
 }
 
 const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, existingReport }) => {
     const reportRef = useRef<HTMLDivElement>(null);
     
-    // Datas padrão: Últimos 7 dias
+    // Default range: Last 7 days
     const defaultEnd = new Date();
     const defaultStart = new Date();
     defaultStart.setDate(defaultEnd.getDate() - 7);
 
     const [startDate, setStartDate] = useState(existingReport ? new Date(existingReport.startDate) : defaultStart);
     const [endDate, setEndDate] = useState(existingReport ? new Date(existingReport.endDate) : defaultEnd);
-    
-    // O estado agora guarda as estatísticas separadamente para facilitar a exibição
     const [stats, setStats] = useState<WeeklyReportStats | null>(existingReport ? existingReport.stats : null);
-    
-    // Guarda o relatório completo para poder salvar depois
-    const [fullReport, setFullReport] = useState<WeeklyReport | null>(existingReport ? (existingReport as WeeklyReport) : null);
-    
     const [isSaved, setIsSaved] = useState(!!existingReport);
-    const [loading, setLoading] = useState(!existingReport);
 
-    // Calcula estatísticas ao mudar datas (apenas se não estiver vendo um histórico salvo)
+    // Calculate stats on date change (debounced or effect)
     useEffect(() => {
         if (!existingReport) {
-            setLoading(true);
-            // Simula um pequeno delay para a UX
-            const timer = setTimeout(() => {
-                // CORREÇÃO: Passa ID e datas como string, conforme o novo service espera
-                const report = calculateReportStats(
-                    user.id || 'unknown', 
-                    startDate.toISOString(), 
-                    endDate.toISOString()
-                );
-                
-                setStats(report.stats);
-                setFullReport(report);
-                setIsSaved(false);
-                setLoading(false);
-            }, 500);
-            return () => clearTimeout(timer);
-        } else {
-            setLoading(false);
+            const calculated = calculateReportStats(startDate, endDate);
+            setStats(calculated);
+            setIsSaved(false); // Reset save state if dates change
         }
-    }, [startDate, endDate, existingReport, user.id]);
+    }, [startDate, endDate, existingReport]);
 
     const dateRangeStr = `${startDate.toLocaleDateString('pt-BR')} - ${endDate.toLocaleDateString('pt-BR')}`;
 
     const handleSave = () => {
-        if (!fullReport) return;
-        
-        // CORREÇÃO: Cria um objeto compatível com SavedReport e WeeklyReport
-        const reportToSave: WeeklyReport = {
-            ...fullReport,
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString(),
-            type: 'manual',
-            userId: user.id || 'unknown'
-        };
-
-        saveReport(reportToSave);
+        if (!stats) return;
+        saveReport(stats, startDate, endDate, 'manual');
         setIsSaved(true);
     };
 
@@ -76,9 +44,9 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
             `Aluno: ${user.name}\n` +
             `Período: ${dateRangeStr}\n\n` +
             `✅ Simulados Completos: ${stats.simCount}\n` +
-            `📈 Média TRI do Período: ${stats.avgSim.toFixed(1)}\n` +
+            `📈 Média TRI do Período: ${stats.avgSim}\n` +
             `📝 Redações Entregues: ${stats.essaysCount}\n` +
-            `🎖️ Média Redação: ${stats.avgEssay.toFixed(0)}\n` +
+            `🎖️ Média Redação: ${stats.avgEssay}\n` +
             `📅 Cronograma: ${stats.tasksProgress}% concluído (${stats.tasksCompleted} tarefas)\n\n` +
             `Acesse detalhes completos em: ${window.location.origin}`;
         
@@ -89,14 +57,18 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
         const content = reportRef.current;
         if (!content) return;
 
+        // Create a dedicated print window
         const printWindow = window.open('', '_blank');
         if (!printWindow) {
             alert("Por favor, permita popups para imprimir o relatório.");
             return;
         }
 
+        // Clone content to manipulate for print view if necessary
+        // We use the innerHTML of the ref
         const htmlContent = content.innerHTML;
 
+        // Write HTML to the new window
         printWindow.document.write(`
             <!DOCTYPE html>
             <html lang="pt-BR">
@@ -106,15 +78,29 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
                 <script src="https://cdn.tailwindcss.com"></script>
                 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
                 <style>
-                    body { font-family: 'Inter', sans-serif; background: white; padding: 40px; color: #0f172a; }
-                    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                    body { 
+                        font-family: 'Inter', sans-serif; 
+                        background: white; 
+                        padding: 40px; 
+                        color: #0f172a;
+                    }
+                    /* Ensure background colors print correctly */
+                    * {
+                        -webkit-print-color-adjust: exact !important; 
+                        print-color-adjust: exact !important; 
+                    }
+                    /* Hide inputs in print, show values if needed (though we use innerHTML, react state values in inputs might not clone perfectly, but usually fine for display) */
                     input { border: none; background: transparent; font-weight: bold; }
                 </style>
             </head>
             <body>
                 ${htmlContent}
                 <script>
-                    setTimeout(() => { window.print(); }, 800);
+                    // Wait for Tailwind to parse
+                    setTimeout(() => {
+                        window.print();
+                        // Optional: window.close() after print;
+                    }, 800);
                 </script>
             </body>
             </html>
@@ -123,9 +109,11 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
         printWindow.document.close();
     };
 
+    // Date Input Handler
     const handleDateChange = (type: 'start' | 'end', val: string) => {
-        if (existingReport) return;
+        if (existingReport) return; // Prevent edit in view mode
         const d = new Date(val);
+        // Basic validation
         if (!isNaN(d.getTime())) {
             if (type === 'start') {
                 if (d > endDate) setEndDate(d);
@@ -137,29 +125,18 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
         }
     };
 
-    if (loading) {
-        return (
-            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                <div className="bg-white p-8 rounded-2xl shadow-xl flex flex-col items-center animate-pulse">
-                    <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
-                    <p className="text-indigo-900 font-bold">Calculando métricas...</p>
-                </div>
-            </div>
-        );
-    }
-
     if (!stats) return null;
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh]">
-                {/* Header */}
+                {/* Header Actions */}
                 <div className="flex justify-between items-center p-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl">
                     <h3 className="font-bold text-slate-700">{existingReport ? 'Visualizar Relatório Salvo' : 'Gerar Novo Relatório'}</h3>
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-600 font-bold p-2">✕</button>
                 </div>
 
-                {/* Content */}
+                {/* Printable Content */}
                 <div id="printable-report" className="p-8 overflow-y-auto bg-white" ref={reportRef}>
                     <div className="flex items-center gap-4 mb-8 border-b-2 border-indigo-600 pb-4">
                         <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-xl">E</div>
@@ -206,7 +183,7 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
                     </div>
 
                     <h4 className="font-bold text-indigo-900 text-lg mb-4 flex items-center gap-2">
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                         Resumo de Atividades & Médias
                     </h4>
                     
@@ -220,7 +197,7 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
                             <div className="mt-3 pt-3 border-t border-slate-100">
                                 <p className="text-[10px] text-slate-400 uppercase">Média do Período</p>
                                 <p className={`text-lg font-bold ${stats.avgSim > 700 ? 'text-green-600' : 'text-indigo-600'}`}>
-                                    {stats.avgSim > 0 ? stats.avgSim.toFixed(1) : '-'} <span className="text-xs font-normal text-slate-400">pts</span>
+                                    {stats.avgSim > 0 ? stats.avgSim : '-'} <span className="text-xs font-normal text-slate-400">pts</span>
                                 </p>
                             </div>
                         </div>
@@ -234,7 +211,7 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
                             <div className="mt-3 pt-3 border-t border-slate-100">
                                 <p className="text-[10px] text-slate-400 uppercase">Média do Período</p>
                                 <p className={`text-lg font-bold ${stats.avgEssay > 800 ? 'text-green-600' : 'text-indigo-600'}`}>
-                                    {stats.avgEssay > 0 ? stats.avgEssay.toFixed(0) : '-'} <span className="text-xs font-normal text-slate-400">pts</span>
+                                    {stats.avgEssay > 0 ? stats.avgEssay : '-'} <span className="text-xs font-normal text-slate-400">pts</span>
                                 </p>
                             </div>
                         </div>
@@ -259,7 +236,7 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
                     </div>
                 </div>
 
-                {/* Footer Actions */}
+                {/* Actions Footer */}
                 <div className="p-4 border-t border-slate-200 bg-slate-50 rounded-b-2xl flex gap-3 flex-wrap">
                     <button onClick={handlePrint} className="flex-1 py-3 bg-slate-800 text-white font-bold rounded-xl hover:bg-slate-900 flex items-center justify-center gap-2 transition-colors text-xs md:text-sm shadow-md">
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>

@@ -14,11 +14,11 @@ interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpdateSettings, onBack, onResumeExam }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'sisu' | 'history' | 'reports' | 'theme' | 'system'>('profile');
   const [activeHistoryTab, setActiveHistoryTab] = useState<'simulados' | 'redacoes'>('simulados');
-   
+  
   const [user, setUser] = useState<User | null>(getUserSession());
   const [settings, setSettings] = useState<UserSettings>(getSettings());
   const isDark = settings.theme === 'dark';
-   
+  
   // Profile Form States
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -109,10 +109,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
       try {
           const results = await estimateSisuCutoff(courses);
           const goals: SisuGoal[] = results.map(r => ({
-              course: r.curso || r.course || 'Desconhecido',
-              cutoff: r.nota_corte_media || r.cutScore || 0,
+              course: r.curso,
+              cutoff: r.nota_corte_media,
               lastUpdated: new Date().toLocaleDateString('pt-BR'),
-              source: r.fontes?.[0] || r.source
+              source: r.fontes?.[0]
           }));
           setPendingGoals(goals);
       } catch (error) {
@@ -130,7 +130,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
       
       setSaveSuccess(true);
       setTimeout(() => {
-          setPendingGoals([]); 
+          setPendingGoals([]); // Clear pending to "reset" the view
       }, 3000);
   };
 
@@ -186,8 +186,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                   
                   if (type === 'redacao') {
                       title = item.state.essayTheme?.titulo || "Redação sem tema (Livre)";
-                      // CORREÇÃO: Uso de ?? para evitar undefined
-                      subtitle = isFinished ? `Nota: ${item.performance?.essayResult?.nota_total ?? item.performance?.essayResult?.notaTotal ?? 0}` : "Rascunho salvo";
+                      subtitle = isFinished ? `Nota: ${item.performance?.essayResult?.nota_total}` : "Rascunho salvo";
                   } else {
                       const modeMap: any = { 'day1': 'Dia 1 (Hum/Ling)', 'day2': 'Dia 2 (Nat/Mat)', 'area_training': 'Treino por Área', 'turbo_review': 'Revisão Turbo' };
                       title = modeMap[item.config.mode] || "Simulado Personalizado";
@@ -318,13 +317,40 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                     <p className={`${textSub} text-sm`}>Defina até 3 cursos e universidades dos seus sonhos para acompanhar as notas de corte em tempo real.</p>
                     
                     <div className="space-y-4 mb-6">
-                        <input type="text" className={`w-full px-4 py-3 rounded-xl border outline-none ${inputClass}`} placeholder="1ª Opção (Ex: Medicina USP)" value={courseInput1} onChange={(e) => setCourseInput1(e.target.value)} />
-                        <input type="text" className={`w-full px-4 py-3 rounded-xl border outline-none ${inputClass}`} placeholder="2ª Opção (Ex: Direito UFRJ)" value={courseInput2} onChange={(e) => setCourseInput2(e.target.value)} />
-                        <input type="text" className={`w-full px-4 py-3 rounded-xl border outline-none ${inputClass}`} placeholder="3ª Opção (Ex: Engenharia UFMG)" value={courseInput3} onChange={(e) => setCourseInput3(e.target.value)} />
+                        <input 
+                            type="text" 
+                            className={`w-full px-4 py-3 rounded-xl border outline-none ${inputClass}`} 
+                            placeholder="1ª Opção (Ex: Medicina USP)" 
+                            value={courseInput1} 
+                            onChange={(e) => setCourseInput1(e.target.value)} 
+                        />
+                        <input 
+                            type="text" 
+                            className={`w-full px-4 py-3 rounded-xl border outline-none ${inputClass}`} 
+                            placeholder="2ª Opção (Ex: Direito UFRJ)" 
+                            value={courseInput2} 
+                            onChange={(e) => setCourseInput2(e.target.value)} 
+                        />
+                        <input 
+                            type="text" 
+                            className={`w-full px-4 py-3 rounded-xl border outline-none ${inputClass}`} 
+                            placeholder="3ª Opção (Ex: Engenharia UFMG)" 
+                            value={courseInput3} 
+                            onChange={(e) => setCourseInput3(e.target.value)} 
+                        />
                     </div>
                     
-                    <button onClick={handleSearchSisu} disabled={isSearchingSisu} className={`w-full py-3 bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 ${isSearchingSisu ? 'opacity-70 cursor-not-allowed' : ''}`}>
-                        {isSearchingSisu ? 'Buscando...' : 'Atualizar Notas de Corte'}
+                    <button 
+                        onClick={handleSearchSisu} 
+                        disabled={isSearchingSisu}
+                        className={`w-full py-3 bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 ${isSearchingSisu ? 'opacity-70 cursor-not-allowed' : ''}`}
+                    >
+                        {isSearchingSisu ? (
+                            <>
+                                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" fill="currentColor"></path></svg>
+                                Buscando...
+                            </>
+                        ) : 'Atualizar Notas de Corte'}
                     </button>
 
                     {pendingGoals.length > 0 && (
@@ -335,7 +361,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                                     <div key={idx} className="p-4 rounded-lg border border-indigo-100 bg-indigo-50 flex justify-between items-center">
                                         <div>
                                             <p className="font-bold text-slate-800">{goal.course}</p>
-                                            {goal.source && <p className="text-xs text-indigo-600">Fonte: {new URL(goal.source).hostname}</p>}
+                                            {goal.source && (
+                                                <a href={goal.source} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 hover:underline block truncate max-w-[200px]" title="Ver fonte original">
+                                                    Fonte: {new URL(goal.source).hostname}
+                                                </a>
+                                            )}
                                         </div>
                                         <div className="text-right">
                                             <span className="block text-2xl font-black text-fuchsia-600">{goal.cutoff}</span>
@@ -344,7 +374,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                                     </div>
                                 ))}
                             </div>
-                            <button onClick={handleSaveSisuGoals} className="w-full mt-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-all">
+                            <button 
+                                onClick={handleSaveSisuGoals}
+                                className="w-full mt-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-md transition-all"
+                            >
                                 {saveSuccess ? 'Metas Salvas! 🎉' : 'Salvar Estas Metas'}
                             </button>
                         </div>
@@ -355,10 +388,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
             {activeTab === 'history' && (
                 <div className={`${cardClass} p-6 rounded-xl border shadow-sm animate-fade-in`}>
                     <h2 className={`text-xl font-bold ${textTitle} mb-4`}>Histórico de Atividades</h2>
+                    
                     <div className={`flex p-1 rounded-lg mb-6 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
                         <button onClick={() => setActiveHistoryTab('simulados')} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeHistoryTab === 'simulados' ? (isDark ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : (isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700')}`}>Simulados</button>
                         <button onClick={() => setActiveHistoryTab('redacoes')} className={`flex-1 py-2 text-sm font-bold rounded-md transition-all ${activeHistoryTab === 'redacoes' ? (isDark ? 'bg-slate-700 text-white shadow-sm' : 'bg-white text-indigo-600 shadow-sm') : (isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700')}`}>Redações</button>
                     </div>
+
                     {activeHistoryTab === 'simulados' ? renderExamList(exams.filter(e => e.config.mode !== 'essay_only'), 'simulado') : renderExamList(exams.filter(e => e.config.mode === 'essay_only'), 'redacao')}
                 </div>
             )}
@@ -377,9 +412,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                                 <div key={report.id} onClick={() => setViewingReport(report)} className={`cursor-pointer ${isDark ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'} border rounded-xl p-4 flex justify-between items-center transition-colors`}>
                                     <div>
                                         <p className={`font-bold ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>Relatório {new Date(report.startDate).toLocaleDateString()} - {new Date(report.endDate).toLocaleDateString()}</p>
-                                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Simulados: {report.stats.simCount} • Redações: {report.stats.essaysCount}</p>
+                                        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Simulados: ${report.stats.simCount} • Redações: ${report.stats.essaysCount}</p>
                                     </div>
-                                    <button onClick={(e) => handleDeleteReport(e, report.id)} className={`p-2 rounded-lg transition-colors ${isDark ? 'text-slate-500 hover:text-red-400 hover:bg-red-900/20' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`} title="Excluir Relatório">
+                                    <button 
+                                        onClick={(e) => handleDeleteReport(e, report.id)}
+                                        className={`p-2 rounded-lg transition-colors ${isDark ? 'text-slate-500 hover:text-red-400 hover:bg-red-900/20' : 'text-slate-400 hover:text-red-500 hover:bg-red-50'}`}
+                                        title="Excluir Relatório"
+                                    >
                                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                     </button>
                                 </div>
@@ -392,22 +431,54 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
             {activeTab === 'theme' && (
                 <div className={`${cardClass} p-6 rounded-xl border shadow-sm space-y-6 animate-fade-in`}>
                     <h2 className={`text-xl font-bold ${textTitle}`}>Aparência</h2>
+                    <p className={`${textSub} text-sm`}>Personalize o visual da sua plataforma.</p>
+
                     <div>
                         <label className={`block text-sm font-bold mb-2 ${labelClass}`}>Tema</label>
                         <div className="flex gap-4">
                             {['light', 'dark', 'system'].map(t => (
-                                <button key={t} onClick={() => handleSettingChange('theme', t)} className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-bold capitalize transition-all ${settings.theme === t ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                                    {t === 'light' && 'Claro'} {t === 'dark' && 'Escuro'} {t === 'system' && 'Sistema'}
+                                <button
+                                    key={t}
+                                    onClick={() => handleSettingChange('theme', t)}
+                                    className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-bold capitalize transition-all ${settings.theme === t ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    {t === 'light' && 'Claro'}
+                                    {t === 'dark' && 'Escuro'}
+                                    {t === 'system' && 'Sistema'}
                                 </button>
                             ))}
                         </div>
                     </div>
+
+                    <div>
+                        <label className={`block text-sm font-bold mb-2 ${labelClass}`}>Estilo da Fonte</label>
+                        <div className="flex gap-4">
+                            {['sans', 'serif', 'mono'].map(f => (
+                                <button
+                                    key={f}
+                                    onClick={() => handleSettingChange('fontStyle', f)}
+                                    className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-bold capitalize transition-all ${settings.fontStyle === f ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    {f === 'sans' && 'Sans-serif'}
+                                    {f === 'serif' && 'Serif'}
+                                    {f === 'mono' && 'Monospace'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     <div>
                         <label className={`block text-sm font-bold mb-2 ${labelClass}`}>Tamanho da Fonte</label>
                         <div className="flex gap-4">
                             {['small', 'base', 'large'].map(s => (
-                                <button key={s} onClick={() => handleSettingChange('fontSize', s)} className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-bold capitalize transition-all ${settings.fontSize === s ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
-                                    {s === 'small' && 'Pequena'} {s === 'base' && 'Normal'} {s === 'large' && 'Grande'}
+                                <button
+                                    key={s}
+                                    onClick={() => handleSettingChange('fontSize', s)}
+                                    className={`flex-1 py-3 px-4 rounded-xl border-2 text-sm font-bold capitalize transition-all ${settings.fontSize === s ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                                >
+                                    {s === 'small' && 'Pequena'}
+                                    {s === 'base' && 'Normal'}
+                                    {s === 'large' && 'Grande'}
                                 </button>
                             ))}
                         </div>
@@ -418,42 +489,54 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
             {activeTab === 'system' && user && (
                 <div className={`${cardClass} p-6 rounded-xl border shadow-sm space-y-6 animate-fade-in`}>
                     <h2 className={`text-xl font-bold ${textTitle}`}>Informações do Sistema</h2>
+                    <p className={`${textSub} text-sm`}>Detalhes sobre sua conta e uso da plataforma.</p>
+
                     <div className="space-y-4">
                         <div>
                             <p className={`text-sm font-bold ${labelClass}`}>Plano Atual</p>
                             <p className={`text-lg font-black ${textTitle}`}>{user.planType}</p>
+                            {user.planType !== 'PREMIUM' && (
+                                <button onClick={() => alert("Navegar para seleção de planos")} className="text-indigo-600 text-sm font-bold hover:underline">
+                                    Fazer Upgrade
+                                </button>
+                            )}
                         </div>
+
                         <div>
                             <p className={`text-sm font-bold ${labelClass}`}>Tokens de IA Consumidos (Total)</p>
-                            {/* CORREÇÃO: Uso de ?? 0 para segurança */}
-                            <p className={`text-lg font-black ${textTitle}`}>{(user.tokensConsumed ?? 0).toLocaleString('pt-BR')}</p>
+                            <p className={`text-lg font-black ${textTitle}`}>{user.tokensConsumed.toLocaleString('pt-BR')}</p>
                         </div>
+                        
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <p className={`text-sm font-bold ${labelClass}`}>Redações Corrigidas</p>
-                                <p className={`text-lg font-black ${textTitle}`}>{user.usage?.essaysCount ?? 0}</p>
+                                <p className={`text-sm font-bold ${labelClass}`}>Redações Corrigidas (Mês Atual)</p>
+                                <p className={`text-lg font-black ${textTitle}`}>{user.usage.essaysCount}</p>
                             </div>
                             <div>
                                 <p className={`text-sm font-bold ${labelClass}`}>Última Redação</p>
-                                <p className={`text-lg font-black ${textTitle}`}>{user.usage?.lastEssayDate ? new Date(user.usage.lastEssayDate).toLocaleDateString() : '-'}</p>
+                                <p className={`text-lg font-black ${textTitle}`}>{user.usage.lastEssayDate ? new Date(user.usage.lastEssayDate).toLocaleDateString() : '-'}</p>
                             </div>
                             <div>
-                                <p className={`text-sm font-bold ${labelClass}`}>Simulados Realizados</p>
-                                <p className={`text-lg font-black ${textTitle}`}>{user.usage?.examsCount ?? 0}</p>
+                                <p className={`text-sm font-bold ${labelClass}`}>Simulados Realizados (Últimos 7 Dias)</p>
+                                <p className={`text-lg font-black ${textTitle}`}>{user.usage.examsCount}</p>
+                            </div>
+                            <div>
+                                <p className={`text-sm font-bold ${labelClass}`}>Último Simulado</p>
+                                <p className={`text-lg font-black ${textTitle}`}>{user.usage.lastExamDate ? new Date(user.usage.lastExamDate).toLocaleDateString() : '-'}</p>
                             </div>
                         </div>
+
                         <div className="pt-6 border-t border-slate-200">
-                             <button onClick={() => { if(confirm("Isso apagará seus dados locais. Continuar?")) { localStorage.clear(); window.location.reload(); } }} className="text-red-500 font-bold text-sm hover:underline">Limpar Dados Locais</button>
+                             <button onClick={() => alert("Limpar cache de dados")} className="text-red-500 font-bold text-sm hover:underline">Limpar Dados Locais</button>
                         </div>
                     </div>
                 </div>
             )}
         </div>
       </div>
-        
-      {showPasswordModal && <ChangePasswordModal />}
-      {/* CORREÇÃO: Passamos existingReport para o modal */}
-      {viewingReport && <WeeklyReportModal user={user!} onClose={() => setViewingReport(null)} existingReport={viewingReport} />}
+        {/* Modals outside content area */}
+        {showPasswordModal && <ChangePasswordModal />}
+        {viewingReport && <WeeklyReportModal user={user!} onClose={() => setViewingReport(null)} existingReport={viewingReport} />}
     </div>
   );
 };
