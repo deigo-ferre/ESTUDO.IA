@@ -1,11 +1,11 @@
 import { SavedSchedule, SavedExam, UserSettings, StudyProfile, StudyScheduleResult, ExamConfig, ExamState, ExamPerformance, User, PlanType, CorrectionResult, SavedReport, WeeklyReportStats } from "../types";
 
 const KEYS = {
-  SCHEDULES: 'enem_ai_schedules',
-  EXAMS: 'enem_ai_exams',
-  SETTINGS: 'enem_ai_settings',
-  USER_SESSION: 'enem_ai_user_session',
-  REPORTS: 'enem_ai_reports'
+  SCHEDULES: 'enem_ai_schedules_v2',
+  EXAMS: 'enem_ai_exams_v2',
+  SETTINGS: 'enem_ai_settings_v2',
+  USER_SESSION: 'enem_ai_user_session_v2',
+  REPORTS: 'enem_ai_reports_v2'
 };
 
 export const getSettings = (): UserSettings => {
