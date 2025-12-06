@@ -1,13 +1,12 @@
 export type PlanType = 'FREE' | 'ADVANCED' | 'PREMIUM';
 
-// --- USUÁRIOS ---
 export interface UserUsage {
-  essaysCount: number;
-  lastEssayDate: string | null;
-  examsCount: number;
-  lastExamDate: string | null;
-  schedulesCount: number;
-  lastScheduleDate: string | null;
+    essaysCount: number;
+    lastEssayDate: string | null;
+    examsCount: number;
+    lastExamDate: string | null;
+    schedulesCount: number;
+    lastScheduleDate: string | null;
 }
 
 export interface User {
@@ -20,12 +19,11 @@ export interface User {
   hasSeenOnboardingGoalSetter?: boolean;
   hasSeenEssayDemo?: boolean;
   planType: PlanType;
-  usage?: UserUsage;
-  tokensConsumed?: number;
+  usage: UserUsage;
+  tokensConsumed: number;
   isAdmin?: boolean;
 }
 
-// --- REDAÇÃO ---
 export interface Competencia {
   nome: string;
   nota: number;
@@ -37,9 +35,6 @@ export interface CorrectionResult {
   competencias: Competencia[];
   comentario_geral: string;
   melhorias: string[];
-  notaTotal?: number; // Compatibilidade
-  correction?: string;
-  comentarios?: string[];
 }
 
 export interface ImageData {
@@ -47,24 +42,38 @@ export interface ImageData {
   mimeType: string;
 }
 
-export interface EssayTheme {
-  titulo: string;
-  textos_motivadores: string[];
-  origem?: string;
+export interface EnemScores {
+  linguagens: number;
+  humanas: number;
+  natureza: number;
+  matematica: number;
+  redacao: number;
 }
 
-// --- SIMULADOS ---
-export type AreaConhecimento = 'Linguagens' | 'Humanas' | 'Natureza' | 'Matemática' | 'Redação';
-export type LinguaEstrangeira = 'Inglês' | 'Espanhol';
+export interface StudyProfile {
+  course: string;
+  hoursPerDay: string;
+  difficulties: string;
+  scores?: EnemScores;
+}
 
-export interface ExamConfig {
-  mode: string;
-  targetCourses: string[];
-  areas: string[] | AreaConhecimento[];
-  foreignLanguage?: string; 
-  durationMinutes: number;
-  totalQuestions: number;
-  turboTopics?: string[]; 
+export interface TopicDetail {
+    name: string;
+    snippet: string;
+}
+
+export type ImageFilter = 'none' | 'grayscale' | 'contrast';
+
+export interface DailySchedule {
+  dia: string;
+  materias: (string | TopicDetail)[];
+  foco: string;
+}
+
+export interface StudyScheduleResult {
+  diagnostico?: string;
+  semana: DailySchedule[];
+  dicas_personalizadas: string[];
 }
 
 export interface QuestionResult {
@@ -76,11 +85,46 @@ export interface QuestionResult {
   explicacao: string;
   materia?: string;
   area?: string;
-  difficulty?: string;
+  difficulty?: 'easy' | 'medium' | 'hard';
   topic?: string;
 }
 
-// Adicionado para corrigir erro no SimuladoGenerator
+export interface EssayTheme {
+  titulo: string;
+  textos_motivadores: string[];
+  origem: string;
+}
+
+export interface SisuEstimation {
+  curso: string;
+  nota_corte_media: number;
+  nota_corte_min: number;
+  nota_corte_max: number;
+  ano_referencia: string;
+  mensagem: string;
+  fontes?: string[];
+}
+
+export interface SisuGoal {
+    course: string;
+    cutoff: number;
+    lastUpdated: string;
+    source?: string;
+}
+
+export type AreaConhecimento = 'Linguagens' | 'Humanas' | 'Natureza' | 'Matemática' | 'Redação';
+export type LinguaEstrangeira = 'Inglês' | 'Espanhol';
+
+export interface ExamConfig {
+  mode: 'day1' | 'day2' | 'area_training' | 'turbo_review' | 'essay_only'; 
+  targetCourses: string[];
+  areas: AreaConhecimento[]; 
+  foreignLanguage?: LinguaEstrangeira; 
+  durationMinutes: number;
+  totalQuestions: number;
+  turboTopics?: string[]; 
+}
+
 export interface BatchRequest {
     area: string;
     count: number;
@@ -98,7 +142,7 @@ export interface ExamState {
   timeRemaining: number;
   isFinished: boolean;
   loadingProgress: number;
-  batchQueue?: any[];
+  batchQueue?: BatchRequest[];
   essayImage?: string | null;
   activeFilter?: ImageFilter;
   lastEssayImageData?: ImageData | null;
@@ -111,9 +155,16 @@ export interface ExamPerformance {
   correctCount: number;
   totalQuestions: number;
   sisuComparisons?: SisuEstimation[];
-  wrongTopics?: string[];
-  correctAnswers?: number; // Compatibilidade
-  byArea?: Record<string, number>; // Compatibilidade
+  wrongTopics?: string[]; 
+}
+
+export interface SavedSchedule {
+  id: string;
+  createdAt: string;
+  profile: StudyProfile;
+  result: StudyScheduleResult;
+  completedItems: string[];
+  archived: boolean;
 }
 
 export interface SavedExam {
@@ -126,72 +177,6 @@ export interface SavedExam {
   performance?: ExamPerformance;
 }
 
-// --- CRONOGRAMAS ---
-export interface TopicDetail {
-  name: string;
-  snippet: string;
-}
-
-export interface DailySchedule {
-  dia: string;
-  materias: (string | TopicDetail)[];
-  foco: string;
-}
-
-export interface StudyScheduleResult {
-  diagnostico?: string;
-  semana: DailySchedule[];
-  dicas_personalizadas: string[];
-  schedule?: any;
-  tips?: string[];
-}
-
-export interface StudyProfile {
-  course: string;
-  hoursPerDay: string | number;
-  difficulties: string | string[];
-  scores?: any;
-  availableTime?: number;
-  targetCourse?: string;
-  weaknesses?: string[];
-  strengths?: string[];
-}
-
-export interface SavedSchedule {
-  id: string;
-  createdAt: string;
-  profile: StudyProfile;
-  result: StudyScheduleResult;
-  completedItems: string[];
-  archived: boolean;
-  weeks?: any[]; // Compatibilidade
-}
-
-// --- RELATÓRIOS E OUTROS ---
-export interface SisuEstimation {
-  curso?: string;
-  nota_corte_media?: number;
-  nota_corte_min?: number;
-  nota_corte_max?: number;
-  ano_referencia?: string;
-  mensagem?: string;
-  fontes?: string[];
-  chance?: number; // Compatibilidade
-  cutScore?: number; // Compatibilidade
-  message?: string; // Compatibilidade
-  course?: string; // Compatibilidade
-  source?: string; // Compatibilidade
-}
-
-export interface SisuGoal {
-  course: string;
-  cutoff: number;
-  lastUpdated: string;
-  source?: string;
-  university?: string; // Compatibilidade
-  cutScore?: number; // Compatibilidade
-}
-
 export interface UserSettings {
   name: string;
   targetCourse: string;
@@ -199,15 +184,6 @@ export interface UserSettings {
   fontStyle: 'sans' | 'serif' | 'mono';
   fontSize: 'small' | 'base' | 'large';
   sisuGoals?: SisuGoal[]; 
-}
-
-export type ImageFilter = 'none' | 'grayscale' | 'contrast';
-
-export interface StudySession {
-    id: string;
-    date: string;
-    duration: number;
-    subject: string;
 }
 
 export interface WeeklyReportStats {
@@ -220,29 +196,14 @@ export interface WeeklyReportStats {
     tasksProgress: number;
 }
 
-export interface WeeklyReport {
+export interface SavedReport {
     id: string;
     userId: string;
     createdAt: string;
     startDate: string;
     endDate: string;
     type: 'manual' | 'auto';
-    stats: WeeklyReportStats; 
-
-    // Campos opcionais para compatibilidade
-    weekStartDate?: string;
-    weekEndDate?: string;
-    totalStudyTime?: number;
-    completedTasks?: number;
-    totalTasks?: number;
-    averageEssayScore?: number;
-    questionsAnswered?: number;
-    correctAnswers?: number;
-    topSubject?: string;
-    weakestSubject?: string;
-    recommendations?: string[];
+    stats: WeeklyReportStats;
 }
 
-// Aliases
-export type SavedReport = WeeklyReport;
-export type Schedule = SavedSchedule;
+export type AppView = 'essay' | 'schedule' | 'simu

@@ -46,7 +46,7 @@ export const getUserSession = (): User | null => {
   user.hasSeenOnboarding = user.hasSeenOnboarding ?? false;
   user.hasSeenOnboardingGoalSetter = user.hasSeenOnboardingGoalSetter ?? false;
   user.hasSeenEssayDemo = user.hasSeenEssayDemo ?? false;
-  user.usage = user.usage || { essaysCount: 0, examsCount: 0, schedulesCount: 0 };
+  user.usage = user.usage || { essaysCount: 0, examsCount: 0, schedulesCount: 0, lastEssayDate: null, lastExamDate: null, lastScheduleDate: null };
   user.tokensConsumed = user.tokensConsumed || 0;
   return user;
 };
@@ -56,6 +56,11 @@ export const clearUserSession = () => localStorage.removeItem(KEYS.USER_SESSION)
 export const checkUsageLimit = (type: 'essay' | 'exam' | 'schedule'): { allowed: boolean; message?: string } => {
     const user = getUserSession();
     if (!user) return { allowed: false, message: "Usuário não logado." };
+    // Defensive check
+    if (!user.usage) {
+        user.usage = { essaysCount: 0, lastEssayDate: null, examsCount: 0, lastExamDate: null, schedulesCount: 0, lastScheduleDate: null };
+    }
+    
     if (user.planType === 'PREMIUM') return { allowed: true };
 
     const now = new Date();
@@ -95,6 +100,12 @@ export const checkUsageLimit = (type: 'essay' | 'exam' | 'schedule'): { allowed:
 export const incrementUsage = (type: 'essay' | 'exam' | 'schedule') => {
     const user = getUserSession();
     if (!user) return;
+    
+    // Ensure usage exists
+    if (!user.usage) {
+        user.usage = { essaysCount: 0, lastEssayDate: null, examsCount: 0, lastExamDate: null, schedulesCount: 0, lastScheduleDate: null };
+    }
+
     const now = new Date();
     const isoNow = now.toISOString();
 
@@ -290,8 +301,17 @@ export const calculateReportStats = (start: Date, end: Date): WeeklyReportStats 
 };
 
 export const saveReport = (stats: WeeklyReportStats, start: Date, end: Date, type: 'manual' | 'auto'): SavedReport => {
+    const user = getUserSession();
     const reports = getReports();
-    const newReport: SavedReport = { id: crypto.randomUUID(), createdAt: new Date().toISOString(), startDate: start.toISOString(), endDate: end.toISOString(), type, stats };
+    const newReport: SavedReport = { 
+        id: crypto.randomUUID(), 
+        userId: user?.id || 'anonymous',
+        createdAt: new Date().toISOString(), 
+        startDate: start.toISOString(), 
+        endDate: end.toISOString(), 
+        type, 
+        stats 
+    };
     localStorage.setItem(KEYS.REPORTS, JSON.stringify([newReport, ...reports]));
     return newReport;
 };
