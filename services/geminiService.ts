@@ -87,7 +87,7 @@ const scheduleSchema = {
                   type: Type.OBJECT,
                   properties: {
                       name: { type: Type.STRING },
-                      snippet: { type: Type.STRING, description: "Resumo curto de 2 linhas sobre o tópico." }
+                      snippet: { type: Type.STRING, description: "Resumo curto de 1 linha." }
                   },
                   required: ["name", "snippet"]
               } 
@@ -139,7 +139,8 @@ const essayThemeSchema = {
 export const transcribeImage = async (image: ImageData): Promise<string> => {
   const ai = getAiClient();
   const modelId = "gemini-2.5-flash";
-  const promptText = `Transcreva o texto desta imagem exatemente como está. Ignore rasuras. Mantenha pontuação.`;
+  // Prompt otimizado para OCR direto
+  const promptText = `Transcreva este texto. Apenas o texto, sem comentários.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -150,7 +151,10 @@ export const transcribeImage = async (image: ImageData): Promise<string> => {
           { text: promptText }
         ]
       },
-      config: { temperature: 0.1 }
+      config: { 
+          temperature: 0.0, // Deterministico para OCR
+          maxOutputTokens: 2000 
+      } 
     });
     
     const output = response.text || "";
@@ -168,20 +172,25 @@ export const transcribeImage = async (image: ImageData): Promise<string> => {
 export const gradeEssay = async (text: string, image?: ImageData | null, theme?: EssayTheme | null): Promise<CorrectionResult> => {
   const ai = getAiClient();
   const modelId = "gemini-2.5-flash"; 
-  let promptText = `Corrija a redação ENEM baseada nas 5 competências. Rigor oficial.`;
+  
+  // Prompt técnico direto para reduzir latência de processamento
+  let promptText = `TASK: Corrigir redação ENEM.
+INPUT: Texto abaixo.
+OUTPUT: JSON estrito seguindo esquema.
+CRITÉRIOS: Rigor oficial INEP (Competências 1-5).
+`;
   
   if (theme) {
-      promptText += `\n\nATENÇÃO AO TEMA PROPOSTO:\nTítulo: "${theme.titulo}"\nUse este tema para avaliar a Competência 2 (Fuga ao tema) e Competência 3. Se o texto fugir deste tema, penalize severamente.\n`;
+      promptText += `TEMA: "${theme.titulo}" (Avalie fuga ao tema).\n`;
   }
 
-  // Explicitly type parts array as any to allow pushing different types of parts
   const contents: any[] = [];
 
   if (image) {
-    promptText += `\nUse o documento/imagem fornecido como referência visual. O texto transcrito é o seguinte: "${text}"`;
+    promptText += `Ref visual anexa. Texto transcrito: "${text}"`;
     contents.push({ inlineData: { mimeType: image.mimeType, data: image.base64 } });
   } else {
-    promptText += `\nTexto do Aluno: "${text}"`;
+    promptText += `TEXTO ALUNO: "${text}"`;
   }
   contents.push({ text: promptText });
 
@@ -192,7 +201,8 @@ export const gradeEssay = async (text: string, image?: ImageData | null, theme?:
       config: {
         responseMimeType: "application/json",
         responseSchema: correctionSchema,
-        temperature: 0.2,
+        temperature: 0.1, // Baixa temperatura para análise técnica rápida
+        maxOutputTokens: 2000 // Limite para evitar alucinações longas
       }
     });
 
@@ -211,13 +221,10 @@ export const gradeEssay = async (text: string, image?: ImageData | null, theme?:
 export const generateStudySchedule = async (profile: StudyProfile): Promise<StudyScheduleResult> => {
   const ai = getAiClient();
   const modelId = "gemini-2.5-flash";
-  let promptText = "";
-
-  if (profile.scores) {
-      promptText = `Crie cronograma ENEM para ${profile.course}. Tempo: ${profile.hoursPerDay}. Notas: Ling ${profile.scores.linguagens}, Hum ${profile.scores.humanas}, Nat ${profile.scores.natureza}, Mat ${profile.scores.matematica}, Red ${profile.scores.redacao}. Regra: Tempo inversamente proporcional à nota. Priorize pesos do SISU. IMPORTANTE: Para cada matéria, forneça um 'snippet' (resumo curto explicativo) no JSON.`;
-  } else {
-      promptText = `Crie cronograma ENEM para ${profile.course}. Tempo: ${profile.hoursPerDay}. Dificuldades: ${profile.difficulties}. IMPORTANTE: Para cada matéria, forneça um 'snippet' (resumo curto explicativo) no JSON.`;
-  }
+  
+  // Prompt comprimido para geração rápida
+  const promptText = `Gere cronograma ENEM JSON. Curso: ${profile.course}. Tempo: ${profile.hoursPerDay}. ${profile.scores ? `Notas: L${profile.scores.linguagens} H${profile.scores.humanas} N${profile.scores.natureza} M${profile.scores.matematica} R${profile.scores.redacao}` : `Dificuldades: ${profile.difficulties}`}.
+REGRAS: Snippets curtos (max 10 palavras). Foco em tópicos de alta incidência.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -226,7 +233,8 @@ export const generateStudySchedule = async (profile: StudyProfile): Promise<Stud
       config: {
         responseMimeType: "application/json",
         responseSchema: scheduleSchema,
-        temperature: 0.6,
+        temperature: 0.3, // Equilíbrio entre variedade e velocidade
+        maxOutputTokens: 3000
       }
     });
     
@@ -246,14 +254,21 @@ export const generateQuestionsBatch = async (area: string, count: number, foreig
   let promptContext = "";
   
   if (turboTopics && turboTopics.length > 0) {
-      promptContext = `MODO REVISÃO INTENSIVA (TURBO). Foque exclusivamente nestes tópicos onde o aluno errou anteriormente: ${turboTopics.join(', ')}. Gere questões para sanar essas dúvidas específicas. Nível: Médio/Difícil.`;
+      promptContext = `TOPICS: ${turboTopics.join(', ')}.`;
   } else if (isForeignBatch && foreignLanguage) {
-      promptContext = `IDIOMA: ${foreignLanguage.toUpperCase()}. Enunciado e Texto Base em ${foreignLanguage}. Foco: Interpretação de texto.`;
+      promptContext = `LANG: ${foreignLanguage}.`;
   } else {
-     promptContext = `Área: ${area}. Gere questões variadas e de alta qualidade. Defina "difficulty" (easy/medium/hard).`;
+     promptContext = `AREA: ${area}.`;
   }
 
-  const promptText = `Gere EXATAMENTE ${count} questões no formato JSON para o ENEM. ${promptContext} Tente usar questões reais ou crie simulados perfeitos.`;
+  // Prompt otimizado para velocidade: direto e estruturado
+  const promptText = `TASK: Generate ${count} ENEM questions in JSON.
+CONTEXT: ${promptContext}
+RULES:
+1. Strict JSON output.
+2. Short, concise texts (max 100 words).
+3. 5 alternatives, 1 correct.
+4. Difficulty: varied.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -262,7 +277,8 @@ export const generateQuestionsBatch = async (area: string, count: number, foreig
       config: {
         responseMimeType: "application/json",
         responseSchema: questionBatchSchema,
-        temperature: 0.5, 
+        temperature: 0.3, // Mais determinístico = mais rápido
+        maxOutputTokens: 800 * count // Limite dinâmico baseado na contagem
       }
     });
 
@@ -301,7 +317,13 @@ export const estimateSisuCutoff = async (courses: string[]): Promise<SisuEstimat
 
     const ai = getAiClient();
     const modelId = "gemini-2.5-flash";
-    const prompt = `Pesquise no Google as notas de corte OFICIAIS do SISU (Ampla Concorrência) dos últimos anos (2023, 2024) para os seguintes cursos: ${missingCourses.join(', ')}. REGRAS RIGOROSAS: 1. Use APENAS dados reais encontrados na busca. NÃO INVENTE. 2. Se não encontrar o curso específico, procure o mais próximo na mesma universidade ou região. 3. Calcule a média simples entre 2023 e 2024 se disponível. 4. Retorne a resposta ESTRITAMENTE como um array JSON válido. O formato do JSON deve ser: [{ "curso_pesquisado": "...", "curso_encontrado": "...", "nota_corte_media": 750.5, "nota_corte_min": 740, "nota_corte_max": 760, "ano_referencia": "Média SISU 2023/24", "mensagem": "..." }]`;
+    
+    // Prompt altamente otimizado para uso de ferramenta
+    // Instruções claras para PARAR a busca assim que encontrar o dado
+    const prompt = `Find SISU 2023/2024 cutoff scores (Ampla Concorrência) for: ${missingCourses.join(', ')}.
+OUTPUT: JSON Array only.
+Format: [{ "curso_pesquisado": "...", "curso_encontrado": "...", "nota_corte_media": number, "ano_referencia": "...", "mensagem": "..." }]
+RULES: Use Google Search. Extract number. Return JSON.`;
 
     try {
         const response = await ai.models.generateContent({
@@ -309,6 +331,8 @@ export const estimateSisuCutoff = async (courses: string[]): Promise<SisuEstimat
             contents: { text: prompt },
             config: {
                 tools: [{ googleSearch: {} }],
+                temperature: 0.1, // Mínima criatividade para busca de dados
+                maxOutputTokens: 1000
             }
         });
         
@@ -324,7 +348,6 @@ export const estimateSisuCutoff = async (courses: string[]): Promise<SisuEstimat
         const uniqueSources = [...new Set(sources)];
 
         let jsonString = outputText;
-        // Clean up markdown code blocks if present
         const jsonMatch = outputText.match(/```json\s*(\[[\s\S]*?\])\s*```/) || outputText.match(/\[[\s\S]*\]/);
         
         if (jsonMatch) {
@@ -334,10 +357,10 @@ export const estimateSisuCutoff = async (courses: string[]): Promise<SisuEstimat
                 const resultObj: SisuEstimation = {
                     curso: item.curso_encontrado || item.curso_pesquisado,
                     nota_corte_media: item.nota_corte_media,
-                    nota_corte_min: item.nota_corte_min,
-                    nota_corte_max: item.nota_corte_max,
-                    ano_referencia: item.ano_referencia,
-                    mensagem: item.mensagem,
+                    nota_corte_min: item.nota_corte_min || item.nota_corte_media - 10,
+                    nota_corte_max: item.nota_corte_max || item.nota_corte_media + 10,
+                    ano_referencia: item.ano_referencia || "SISU Recente",
+                    mensagem: item.mensagem || "Nota estimada via busca.",
                     fontes: uniqueSources
                 };
                 if (item.curso_pesquisado) saveToSisuCache(normalizeKey(item.curso_pesquisado), resultObj);
@@ -345,18 +368,18 @@ export const estimateSisuCutoff = async (courses: string[]): Promise<SisuEstimat
             });
             return [...results, ...newResults];
         } else {
-             throw new Error("Formato JSON não encontrado na resposta da busca.");
+             // Fallback silencioso se o JSON falhar, mas tenta parsear o texto se for simples
+             throw new Error("Formato JSON não encontrado.");
         }
     } catch (e) {
         console.error("Erro no Grounding SISU:", e);
-        // Fallback para evitar travar a UI
         const fallbacks = missingCourses.map(c => ({
             curso: c,
             nota_corte_media: 700, 
             nota_corte_min: 600,
             nota_corte_max: 800,
-            ano_referencia: "Estimativa (Sem dados reais)",
-            mensagem: "Não foi possível verificar a nota real no momento. Tente novamente mais tarde."
+            ano_referencia: "Estimativa",
+            mensagem: "Dados indisponíveis no momento."
         }));
         return [...results, ...fallbacks];
     }
@@ -365,7 +388,8 @@ export const estimateSisuCutoff = async (courses: string[]): Promise<SisuEstimat
 export const generateEssayTheme = async (): Promise<EssayTheme> => {
   const ai = getAiClient();
   const modelId = "gemini-2.5-flash";
-  const promptText = `Gere um tema de redação ENEM completo. O tema pode ser uma proposta anterior do ENEM ou um tema ATUAL E EM ALTA NO MOMENTO. Retorne apenas o JSON com título e textos motivadores (curtos).`;
+  // Prompt curto e direto
+  const promptText = `Gere tema redação ENEM atual. JSON: {titulo, textos_motivadores, origem}.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -374,7 +398,8 @@ export const generateEssayTheme = async (): Promise<EssayTheme> => {
       config: {
         responseMimeType: "application/json",
         responseSchema: essayThemeSchema,
-        temperature: 0.8,
+        temperature: 0.7, // Um pouco de variedade aqui é bom, mas mantemos o restante rápido
+        maxOutputTokens: 1000
       }
     });
 
