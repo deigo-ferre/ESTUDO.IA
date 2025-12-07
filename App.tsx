@@ -20,8 +20,9 @@ import AdminDashboard from './components/AdminDashboard';
 type InputMode = 'text' | 'camera' | 'upload' | 'editor';
 type AppView = 'essay' | 'schedule' | 'simulado' | 'user_area' | 'settings' | 'admin';
 
-const MAX_IMAGE_DIMENSION = 2000;
-const OPTIMIZED_JPEG_QUALITY = 0.8;
+const MAX_IMAGE_DIMENSION = 1600; // Reduzido de 2000 para otimizar payload e renderização
+const OPTIMIZED_IMAGE_QUALITY = 0.75; // Qualidade ajustada para melhor compressão
+const IMAGE_FORMAT = 'image/webp'; // Mudança para WebP para menor tamanho de arquivo
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -245,7 +246,8 @@ const App: React.FC = () => {
         canvas.width = width;
         canvas.height = height;
         ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', OPTIMIZED_JPEG_QUALITY));
+        // Convert to WebP for better compression
+        resolve(canvas.toDataURL(IMAGE_FORMAT, OPTIMIZED_IMAGE_QUALITY));
       };
       img.onerror = () => resolve(dataUrl);
     });
@@ -282,7 +284,8 @@ const App: React.FC = () => {
       const context = canvas.getContext('2d');
       if (context) {
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const rawImageBase64 = canvas.toDataURL('image/jpeg', 1.0);
+        // Use default high quality for initial capture, optimize later
+        const rawImageBase64 = canvas.toDataURL(IMAGE_FORMAT, 0.9);
         const optimizedImageBase64 = await optimizeImage(rawImageBase64);
         setSelectedImage(optimizedImageBase64);
         stopCamera();
@@ -368,8 +371,8 @@ const App: React.FC = () => {
             else if (activeFilter === 'contrast') ctx.filter = 'contrast(150%) grayscale(100%) brightness(90%)';
             else ctx.filter = 'none';
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            const processedBase64 = canvas.toDataURL('image/jpeg', OPTIMIZED_JPEG_QUALITY);
-            resolve({ base64: processedBase64.split(',')[1], mimeType: 'image/jpeg' });
+            const processedBase64 = canvas.toDataURL(IMAGE_FORMAT, OPTIMIZED_IMAGE_QUALITY);
+            resolve({ base64: processedBase64.split(',')[1], mimeType: IMAGE_FORMAT });
         };
         img.onerror = () => resolve(null);
      });
@@ -526,7 +529,7 @@ const App: React.FC = () => {
                 <button onClick={() => setCurrentView('settings')} className={`p-2 rounded-full transition-colors ${settings.theme === 'dark' ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100'}`} title="Configurações">
                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l-.06-.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l-.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
                 </button>
-                <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}&background=0D8ABC&color=fff`} className={`w-9 h-9 rounded-full border ${settings.theme === 'dark' ? 'border-slate-700' : 'border-slate-200'}`} alt="User" loading="lazy" />
+                <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}&background=0D8ABC&color=fff`} className={`w-9 h-9 rounded-full border ${settings.theme === 'dark' ? 'border-slate-700' : 'border-slate-200'}`} alt="User" loading="lazy" width="36" height="36" decoding="async" />
              </div>
           </div>
         </div>
@@ -578,7 +581,7 @@ const App: React.FC = () => {
                     <button onClick={() => { setInputMode('text'); setSelectedImage(null); }} className="text-red-500 text-sm font-semibold hover:bg-red-50 px-2 py-1 rounded">Descartar</button>
                     </div>
                     <div className="p-6 bg-slate-100 flex justify-center overflow-auto max-h-[50vh] relative">
-                    <img src={selectedImage} className={`max-w-full shadow-lg transition-all duration-300 ${getFilterClass()}`} alt="Captured Essay" loading="lazy" />
+                    <img src={selectedImage} className={`max-w-full shadow-lg transition-all duration-300 ${getFilterClass()}`} alt="Captured Essay" loading="lazy" decoding="async" />
                     {isTranscribing && (
                         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex flex-col items-center justify-center z-10">
                             <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-3"></div>
@@ -650,7 +653,7 @@ const App: React.FC = () => {
                         <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-start gap-4 animate-fade-in">
                             <div className="relative group flex-shrink-0">
                                 {isImageFile ? (
-                                    <img src={selectedImage} alt="Attached" className={`w-24 h-24 object-cover rounded-lg border border-slate-300 ${getFilterClass()}`} loading="lazy" />
+                                    <img src={selectedImage} alt="Attached" className={`w-24 h-24 object-cover rounded-lg border border-slate-300 ${getFilterClass()}`} loading="lazy" decoding="async" />
                                 ) : (
                                     <div className="w-24 h-24 flex flex-col items-center justify-center bg-slate-200 rounded-lg border border-slate-300 text-slate-500"><svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg><span className="text-[10px] font-bold uppercase">Arquivo</span></div>
                                 )}

@@ -279,7 +279,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                 <div className={`${cardClass} p-6 rounded-xl border shadow-sm space-y-8 animate-fade-in`}>
                     <div className="flex items-center gap-6">
                         <div className="relative group cursor-pointer" onClick={handlePhotoUpload}>
-                            <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}`} className={`w-24 h-24 rounded-full border-4 object-cover ${isDark ? 'border-slate-800' : 'border-slate-100'}`} alt="User Avatar" loading="lazy" />
+                            <img src={user.avatar || `https://ui-avatars.com/api/?name=${user.name}`} className={`w-24 h-24 rounded-full border-4 object-cover ${isDark ? 'border-slate-800' : 'border-slate-100'}`} alt="User Avatar" loading="lazy" decoding="async" />
                             <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
                             </div>
