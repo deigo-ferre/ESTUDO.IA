@@ -15,8 +15,8 @@ const AREAS_INFO = {
   'Redação': { color: 'slate', label: 'Redação' }
 };
 
-const INITIAL_BATCH_SIZE = 1;
-const DEFAULT_BATCH_SIZE = 3;
+const INITIAL_BATCH_SIZE = 1; // Start quick with 1 question
+const DEFAULT_BATCH_SIZE = 3; // Continue with batches of 3 as requested
 
 // --- EXAM REDUCER ---
 interface ExamStateReducer {
@@ -26,8 +26,9 @@ interface ExamStateReducer {
     userEssayText: string;
     timeRemaining: number;
     isFinished: boolean;
-    isLoading: boolean;
-    loadingProgress: number; // For fetching questions
+    isLoading: boolean; // Blocking loading (initial)
+    isBackgroundLoading: boolean; // Non-blocking loading (subsequent batches)
+    loadingProgress: number; 
     batchQueue: BatchRequest[];
     error: string | null;
 }
@@ -35,6 +36,8 @@ interface ExamStateReducer {
 type ExamAction = 
     | { type: 'START_LOADING' }
     | { type: 'STOP_LOADING' }
+    | { type: 'START_BACKGROUND_LOADING' }
+    | { type: 'STOP_BACKGROUND_LOADING' }
     | { type: 'SET_QUESTIONS'; payload: (QuestionResult | null)[] }
     | { type: 'ADD_QUESTIONS'; payload: { newQuestions: QuestionResult[], startIndex: number } }
     | { type: 'SET_ESSAY_THEME'; payload: EssayTheme | null }
@@ -53,6 +56,10 @@ const examReducer = (state: ExamStateReducer, action: ExamAction): ExamStateRedu
             return { ...state, isLoading: true, error: null };
         case 'STOP_LOADING':
             return { ...state, isLoading: false };
+        case 'START_BACKGROUND_LOADING':
+            return { ...state, isBackgroundLoading: true };
+        case 'STOP_BACKGROUND_LOADING':
+            return { ...state, isBackgroundLoading: false };
         case 'SET_QUESTIONS':
             return { ...state, questions: action.payload };
         case 'ADD_QUESTIONS': {
@@ -79,9 +86,9 @@ const examReducer = (state: ExamStateReducer, action: ExamAction): ExamStateRedu
         case 'DEQUEUE_BATCH':
             return { ...state, batchQueue: state.batchQueue.slice(1) };
         case 'SET_ERROR':
-            return { ...state, error: action.payload, isLoading: false };
+            return { ...state, error: action.payload, isLoading: false, isBackgroundLoading: false };
         case 'FINISH_EXAM':
-            return { ...state, isFinished: true, isLoading: false };
+            return { ...state, isFinished: true, isLoading: false, isBackgroundLoading: false };
         default:
             return state;
     }
@@ -642,7 +649,6 @@ const ExamResults: React.FC<{
     onStartTurboReview: (topics: string[]) => void;
     onUpgrade: () => void;
 }> = ({ config, performance, onBack, onStartTurboReview, onUpgrade }) => {
-    // ... (ExamResults imports and basic logic)
     const settings = getSettings();
     const isDark = settings.theme === 'dark';
     const textTitle = isDark ? 'text-white' : 'text-slate-800';
@@ -777,7 +783,8 @@ const ExamResults: React.FC<{
     );
 };
 
-// ... (SimuladoGenerator main component export remains the same)
+// --- MAIN SIMULADO GENERATOR COMPONENT ---
+
 const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => void }> = ({ resumeExamId, onBack }) => {
     const [view, setView] = useState<'dashboard' | 'runner' | 'results'>('dashboard');
     const [config, setConfig] = useState<ExamConfig | null>(null);
@@ -793,6 +800,7 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
         timeRemaining: 0,
         isFinished: false,
         isLoading: false,
+        isBackgroundLoading: false, // New state for non-blocking loading
         loadingProgress: 0,
         batchQueue: [],
         error: null,
@@ -842,26 +850,26 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
         }
     }, [view, config, examId, examState.userAnswers, examState.userEssayText, examState.timeRemaining, examState.batchQueue]);
 
-    // --- Question Batch Processing Effect ---
+    // --- Question Batch Processing Effect (NON-BLOCKING) ---
     useEffect(() => {
-        if (examState.batchQueue.length > 0 && !examState.isLoading) {
+        if (examState.batchQueue.length > 0 && !examState.isBackgroundLoading && !examState.isLoading) {
             const processNextBatch = async () => {
-                dispatch({ type: 'START_LOADING' });
+                dispatch({ type: 'START_BACKGROUND_LOADING' });
                 const nextBatch = examState.batchQueue[0];
                 try {
                     const newQuestions = await generateQuestionsBatch(nextBatch.area, nextBatch.count, nextBatch.language, nextBatch.isForeign, nextBatch.topics);
                     dispatch({ type: 'ADD_QUESTIONS', payload: { newQuestions, startIndex: nextBatch.startIndex } });
                     dispatch({ type: 'DEQUEUE_BATCH' });
                 } catch (e) {
-                    dispatch({ type: 'SET_ERROR', payload: "Falha ao carregar questões." });
+                    // Do not block UI on error, maybe retry later or log
                     console.error("Batch load failed:", e);
                 } finally {
-                    dispatch({ type: 'STOP_LOADING' });
+                    dispatch({ type: 'STOP_BACKGROUND_LOADING' });
                 }
             };
             processNextBatch();
         }
-    }, [examState.batchQueue, examState.isLoading]); // Only re-run when queue or loading state changes
+    }, [examState.batchQueue, examState.isBackgroundLoading, examState.isLoading]);
 
 
     const saveProgress = useCallback((status: 'in_progress' | 'completed' = 'in_progress', perf?: ExamPerformance) => {
@@ -895,8 +903,18 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
         // Day 1: 45 Ling (5 foreign), 45 Humanas, 1 Redação
         if (newConfig.mode === 'day1') {
             // Initial foreign language questions (e.g., 5-10 questions)
-            queue.push({ area: 'Linguagens', count: 5, startIndex: 0, isForeign: true, language: newConfig.foreignLanguage });
-            // Remaining Linguistics questions (up to 45 total for linguistics)
+            // Use INITIAL_BATCH_SIZE for the very first fetch to be super fast
+            const firstBatchSize = INITIAL_BATCH_SIZE;
+            
+            queue.push({ area: 'Linguagens', count: firstBatchSize, startIndex: 0, isForeign: true, language: newConfig.foreignLanguage });
+            
+            // Remaining Foreign (if any) + Linguistics
+            // Assuming 5 foreign questions total
+            if (5 > firstBatchSize) {
+                 queue.push({ area: 'Linguagens', count: 5 - firstBatchSize, startIndex: firstBatchSize, isForeign: true, language: newConfig.foreignLanguage });
+            }
+
+            // Remaining Linguistics questions (up to 45 total for linguistics area)
             for(let i = 5; i < 45; i += DEFAULT_BATCH_SIZE) {
                 queue.push({ area: 'Linguagens', count: Math.min(DEFAULT_BATCH_SIZE, 45 - i), startIndex: i });
             }
@@ -908,7 +926,10 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
         } 
         // Day 2: 45 Natureza, 45 Matemática
         else if (newConfig.mode === 'day2') {
-            for(let i = 0; i < 45; i += DEFAULT_BATCH_SIZE) {
+            // Start very fast
+            queue.push({ area: 'Natureza', count: INITIAL_BATCH_SIZE, startIndex: 0 });
+            
+            for(let i = INITIAL_BATCH_SIZE; i < 45; i += DEFAULT_BATCH_SIZE) {
                 queue.push({ area: 'Natureza', count: Math.min(DEFAULT_BATCH_SIZE, 45 - i), startIndex: i });
             }
             for(let i = 0; i < 45; i += DEFAULT_BATCH_SIZE) {
@@ -923,13 +944,23 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
                 queue.push({ area: area, count: Math.min(DEFAULT_BATCH_SIZE, 45 - i), startIndex: i, isForeign: area === 'Linguagens', language: newConfig.foreignLanguage });
             }
         }
-        // Turbo Review: Specific topics for a given area (queue built in onStartTurboReview)
-        // Essay Only: Only essay handled below
+        // Turbo Review & Essay Only
+        else if (newConfig.mode === 'turbo_review') {
+             // For turbo, we might want slightly larger batches or just normal flow
+             if (newConfig.turboTopics && newConfig.turboTopics.length > 0) {
+                 // Simplified logic for Turbo: 1 batch per topic or similar. 
+                 // Assuming strict 15 questions total for now based on previous logic
+                 queue.push({ area: 'Geral', count: 3, startIndex: 0, topics: newConfig.turboTopics });
+                 for(let i = 3; i < 15; i += 3) {
+                     queue.push({ area: 'Geral', count: 3, startIndex: i, topics: newConfig.turboTopics });
+                 }
+             }
+        }
 
         dispatch({ type: 'SET_BATCH_QUEUE', payload: queue });
 
         try {
-            // Load the first batch of questions synchronously to start quickly
+            // Load the FIRST batch synchronously to start quickly (blocking UI for a moment)
             if (queue.length > 0) {
                 const firstBatch = queue[0];
                 const initialQuestionsLoad = await generateQuestionsBatch(firstBatch.area, firstBatch.count, firstBatch.language, firstBatch.isForeign, firstBatch.topics);
@@ -1010,8 +1041,7 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
             // 2. Grade Essay if present
             let essayResult: CorrectionResult | null = null;
             if (examState.userEssayText.length > 10 && config?.areas.includes('Redação')) {
-                // IMPORTANT: Pass undefined for image to ensure type safety (ImageData | undefined)
-                essayResult = await gradeEssay(examState.userEssayText, undefined, examState.essayTheme);
+                essayResult = await gradeEssay(examState.userEssayText, null, examState.essayTheme);
             }
 
             // 3. Estimate SISU Cutoffs if target courses are defined
@@ -1104,7 +1134,8 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
     };
 
     // Main render logic based on 'view' state
-    if (examState.isLoading && view !== 'dashboard') { // Show global loading if runner/results is loading
+    // Only show global loading spinner if it is blocking loading (initial load or finish)
+    if (examState.isLoading && view !== 'dashboard') { 
         return <LoadingSpinner />;
     }
 
