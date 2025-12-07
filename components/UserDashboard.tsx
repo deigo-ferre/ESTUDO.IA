@@ -1,6 +1,3 @@
-
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { getSchedules, getExams, getSettings, getUserSession, toggleScheduleTask, calculateReportStats, saveReport, saveUserSession } from '../services/storageService';
 import { SavedSchedule, SavedExam, UserSettings, User, SisuGoal } from '../types';
@@ -85,6 +82,128 @@ const SisuSummaryCard: React.FC<{ goals: SisuGoal[], currentScore: number, isDar
             icon={<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>}
             subtext="Cursos aprovados (Simulado Completo)"
         />
+    );
+};
+
+// --- SISU GOAL TRACKER COMPONENT ---
+const SisuGoalTracker: React.FC<{ goals: SisuGoal[], exams: SavedExam[], isDark: boolean }> = ({ goals, exams, isDark }) => {
+    const stats = useMemo(() => {
+        // Filtrar exames válidos (que tenham nota total e não sejam só redação)
+        const validExams = exams.filter(e => e.status === 'completed' && e.config.mode !== 'essay_only' && e.performance?.totalScore);
+        
+        // Ordenar por data (recente primeiro)
+        const sortedExams = [...validExams].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        
+        const lastScore = sortedExams.length > 0 ? Math.round(sortedExams[0].performance!.totalScore) : 0;
+        const avgScore = sortedExams.length > 0 ? Math.round(sortedExams.reduce((acc, e) => acc + e.performance!.totalScore, 0) / sortedExams.length) : 0;
+        
+        const trend = lastScore - avgScore;
+
+        return { avgScore, lastScore, trend, hasData: sortedExams.length > 0 };
+    }, [exams]);
+
+    const cardClass = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
+    const textTitle = isDark ? 'text-white' : 'text-slate-800';
+    const textSub = isDark ? 'text-slate-400' : 'text-slate-500';
+
+    if (!goals || goals.length === 0) return null;
+
+    return (
+        <div className={`${cardClass} rounded-2xl shadow-sm border p-6 mb-8`}>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div>
+                    <h3 className={`text-xl font-bold ${textTitle} flex items-center gap-2`}>
+                        <svg className="w-6 h-6 text-fuchsia-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+                        Monitoramento de Metas SISU
+                    </h3>
+                    <p className={`text-sm ${textSub}`}>Comparativo da sua média geral vs notas de corte oficiais.</p>
+                </div>
+                
+                {stats.hasData && (
+                    <div className={`flex gap-4 p-2 rounded-xl ${isDark ? 'bg-slate-800' : 'bg-slate-50'}`}>
+                        <div className="text-center px-2">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Sua Média</span>
+                            <span className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>{stats.avgScore}</span>
+                        </div>
+                        <div className={`w-px ${isDark ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                        <div className="text-center px-2">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Último Simulado</span>
+                            <div className="flex items-center gap-1">
+                                <span className={`text-lg font-black ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{stats.lastScore}</span>
+                                {stats.trend !== 0 && (
+                                    <span className={`text-xs font-bold ${stats.trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                        {stats.trend > 0 ? '▲' : '▼'} {Math.abs(stats.trend)}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {!stats.hasData ? (
+                <div className={`text-center py-8 rounded-xl border border-dashed ${isDark ? 'border-slate-800 bg-slate-800/20' : 'border-slate-200 bg-slate-50'}`}>
+                    <p className={`${textSub}`}>Realize simulados completos (Dia 1 ou Dia 2) para ver sua projeção no SISU.</p>
+                </div>
+            ) : (
+                <div className="space-y-5">
+                    {goals.map((goal, idx) => {
+                        const diff = stats.avgScore - goal.cutoff;
+                        const progress = Math.min(100, Math.max(0, (stats.avgScore / goal.cutoff) * 100));
+                        const isPassing = diff >= 0;
+                        const lastExamDiff = stats.lastScore - goal.cutoff;
+                        const isPassingLast = lastExamDiff >= 0;
+
+                        return (
+                            <div key={idx} className="relative">
+                                <div className="flex justify-between items-end mb-2">
+                                    <div>
+                                        <p className={`font-bold ${textTitle}`}>{goal.course}</p>
+                                        <p className="text-xs text-slate-500">Corte: <span className="font-mono font-bold">{goal.cutoff}</span></p>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className={`text-sm font-bold ${isPassing ? 'text-green-500' : 'text-amber-500'}`}>
+                                            {isPassing ? 'Na média! 🎉' : `Faltam ${Math.abs(diff)} pts na média`}
+                                        </span>
+                                        <p className={`text-[10px] ${isPassingLast ? 'text-green-400' : 'text-slate-400'}`}>
+                                            Último teste: {isPassingLast ? 'Aprovado' : `${lastExamDiff} pts`}
+                                        </p>
+                                    </div>
+                                </div>
+                                
+                                <div className={`h-4 w-full rounded-full overflow-hidden relative ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
+                                    {/* Goal Marker (Cutoff) - Represented implicitly as 100% of the bar width if we scaled relative to cutoff, but better to scale to max score (1000) */}
+                                    {/* Let's map 0-1000 scale */}
+                                    <div 
+                                        className="absolute top-0 bottom-0 w-0.5 bg-slate-400 z-10 opacity-50" 
+                                        style={{ left: `${(goal.cutoff / 1000) * 100}%` }}
+                                        title={`Corte: ${goal.cutoff}`}
+                                    ></div>
+                                    
+                                    {/* Average Score Bar */}
+                                    <div 
+                                        className={`h-full transition-all duration-1000 ease-out rounded-full ${isPassing ? 'bg-green-500' : 'bg-amber-500'}`}
+                                        style={{ width: `${(stats.avgScore / 1000) * 100}%` }}
+                                    ></div>
+
+                                    {/* Last Exam Dot Marker */}
+                                    <div 
+                                        className={`absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border border-white shadow-sm z-20 ${isPassingLast ? 'bg-green-400' : 'bg-indigo-500'}`}
+                                        style={{ left: `calc(${(stats.lastScore / 1000) * 100}% - 4px)` }}
+                                        title={`Último: ${stats.lastScore}`}
+                                    ></div>
+                                </div>
+                                <div className="flex justify-between text-[10px] text-slate-500 mt-1 font-mono">
+                                    <span>0</span>
+                                    <span>500</span>
+                                    <span>1000</span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
     );
 };
 
@@ -405,6 +524,9 @@ const UserDashboard: React.FC<{ onResumeExam: (id: string) => void; onChangeView
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <div className="lg:col-span-2">
+                    {/* Monitoramento de Metas SISU */}
+                    <SisuGoalTracker goals={settings.sisuGoals || []} exams={completedExams} isDark={isDark} />
+                    
                     <PerformanceHub exams={completedExams} isDark={isDark} />
                 </div>
 
