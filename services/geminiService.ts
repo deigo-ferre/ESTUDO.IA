@@ -2,15 +2,9 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { CorrectionResult, ImageData, StudyProfile, StudyScheduleResult, QuestionResult, EssayTheme, SisuEstimation } from "../types";
 import { logTokens } from "./storageService";
 
-// --- CONFIGURAÇÃO DA API KEY (VITE) ---
-// Safe access to import.meta.env
-const apiKey = import.meta.env?.VITE_GEMINI_API_KEY || '';
-
-if (!apiKey) {
-    console.warn("⚠️ Nenhuma API Key encontrada. Configure VITE_GEMINI_API_KEY no arquivo .env local.");
-}
-
-const ai = new GoogleGenAI({ apiKey: apiKey });
+// --- CONFIGURAÇÃO DA API KEY ---
+// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
