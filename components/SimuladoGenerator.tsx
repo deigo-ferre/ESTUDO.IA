@@ -428,6 +428,42 @@ const ExamRunner: React.FC<{
         }
     };
 
+    // --- Delivery & Cancellation Logic ---
+    const handleDeliveryCheck = () => {
+        // Se for modo apenas redação, confirmação simples
+        if (config.mode === 'essay_only') {
+            if(window.confirm("Deseja entregar sua redação para correção?")) onFinish();
+            return;
+        }
+
+        const total = config.totalQuestions;
+        const answered = Object.keys(userAnswers).map(Number);
+        const missing: number[] = [];
+        
+        for(let i=0; i<total; i++) {
+            if(!answered.includes(i)) missing.push(i+1);
+        }
+
+        if (missing.length > 0) {
+            const confirmText = `Você ainda não respondeu ${missing.length} questões.\nQuestões faltantes: ${missing.slice(0, 10).join(', ')}${missing.length > 10 ? '...' : ''}\n\nTem certeza que deseja entregar o simulado incompleto?`;
+            if (window.confirm(confirmText)) {
+                onFinish();
+            } else {
+                // Navega para a primeira questão não respondida
+                setQIndex(missing[0] - 1);
+                setCurrentView('questions');
+            }
+        } else {
+            if(window.confirm("Você tem certeza que deseja finalizar a prova agora?")) onFinish();
+        }
+    };
+
+    const handleCancelCheck = () => {
+        if(window.confirm("Tem certeza que deseja cancelar este simulado? Todo o progresso será perdido e ele NÃO aparecerá no histórico.")) {
+            onCancel();
+        }
+    }
+
     const hasQuestions = config.totalQuestions > 0;
     const loadedCount = questions.filter(q => q !== null).length;
     const progressPercent = hasQuestions ? Math.round((loadedCount / config.totalQuestions) * 100) : 100;
@@ -512,8 +548,9 @@ const ExamRunner: React.FC<{
                             <span className="hidden sm:inline">Carregando ({progressPercent}%)</span>
                         </div>
                     )}
+                    <button onClick={handleCancelCheck} className="bg-red-900/50 border border-red-800 hover:bg-red-800 text-red-200 text-xs font-bold px-4 py-2 rounded transition-colors">Cancelar</button>
                     <button onClick={onSaveAndExit} className="bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold px-4 py-2 rounded">Salvar e Sair</button>
-                    <button onClick={() => { if(window.confirm("Você tem certeza que deseja finalizar a prova agora?")) onFinish(); }} className="bg-red-600 hover:bg-red-700 text-white text-xs font-bold px-4 py-2 rounded">Entregar</button>
+                    <button onClick={handleDeliveryCheck} className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold px-4 py-2 rounded">Entregar</button>
                 </div>
             </header>
 
@@ -1018,7 +1055,8 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
             if (config?.mode !== 'essay_only') {
                 const areaCounts: Record<string, { total: number, correct: number }> = {};
                 examState.questions.forEach((q, idx) => {
-                    if (!q) return; // Skip questions not yet loaded
+                    // Include all questions, even if not loaded/answered (they count as wrong/skipped)
+                    if (!q) return; 
                     const area = q.area || 'Geral';
                     if (!areaCounts[area]) areaCounts[area] = { total: 0, correct: 0 };
                     areaCounts[area].total++;
