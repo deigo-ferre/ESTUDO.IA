@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { gradeEssay, transcribeImage, generateEssayTheme } from './services/geminiService';
 import { saveUserSession, getUserSession, clearUserSession, getSettings, checkUsageLimit, incrementUsage, upgradeUser, saveStandaloneEssay, setUserPlan, getExamById, saveExamProgress } from './services/storageService';
@@ -45,6 +46,9 @@ const App: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<ImageFilter>('none');
   const [isCameraActive, setIsCameraActive] = useState(false);
+  
+  // State to control Landing Page visibility vs Main App
+  const [showLanding, setShowLanding] = useState(true);
 
   // Helper to determine if selectedImage string is actually an image (and not a PDF data URI)
   const isImageFile = (selectedImage?.startsWith('data:image') && !selectedImage.includes('application/pdf')) ?? false;
@@ -58,16 +62,15 @@ const App: React.FC = () => {
     const storedSettings = getSettings();
     if (storedUser) {
         setUser(storedUser);
-        // Direct admin check on load
+        // We do NOT set showLanding(false) here, because we want the Landing Page to be the first screen on reload
+        // unless the user was deep-linked or we decide otherwise. For "Front Page First" requirement, we keep showLanding=true.
+        
+        // However, checking conditions for modals:
         if (storedUser.isAdmin) {
             setCurrentView('admin');
-        } else if (!storedUser.hasSelectedPlan) { // Apenas se ainda não escolheu plano
-            setShowPlanSelection(true);
-        } else if (!storedUser.hasSeenOnboardingGoalSetter && (!storedSettings.sisuGoals || storedSettings.sisuGoals.length === 0)) {
-            setShowGoalSetter(true);
-        } else if (!storedUser.hasSeenOnboarding) {
-            setShowTour(true);
-        }
+            setShowLanding(false); // Admin goes straight to dashboard usually, or we can keep landing. Let's send admin to dash.
+        } 
+        // Note: Plan selection and Onboarding checks moved to handleEnterApp to avoid modal clutter on Landing Page
     }
     setSettings(storedSettings);
     setAuthLoading(false);
@@ -100,6 +103,21 @@ const App: React.FC = () => {
       return classes;
   };
 
+  const handleEnterApp = () => {
+      setShowLanding(false);
+      
+      // Perform post-login checks here that were previously in useEffect/handleLogin
+      if (user) {
+          if (!user.hasSelectedPlan && !user.isAdmin) {
+              setShowPlanSelection(true);
+          } else if (!user.hasSeenOnboardingGoalSetter && (!settings.sisuGoals || settings.sisuGoals.length === 0) && !user.isAdmin) {
+              setShowGoalSetter(true);
+          } else if (!user.hasSeenOnboarding && !user.isAdmin) {
+              setShowTour(true);
+          }
+      }
+  };
+
   const handleLogin = (newUser: User) => {
     // --- ADMIN CHECK LOGIC ---
     if (newUser.email === 'admin@estude.ia') {
@@ -107,20 +125,13 @@ const App: React.FC = () => {
         setUser(adminUser);
         saveUserSession(adminUser);
         setCurrentView('admin');
+        setShowLanding(false);
         return;
     }
     
     setUser(newUser);
     saveUserSession(newUser);
-
-    // LOGICA CORRIGIDA: Só mostra seleção de plano se o usuário ainda não escolheu.
-    if (!newUser.hasSelectedPlan) {
-        setShowPlanSelection(true);
-    } else if (!newUser.hasSeenOnboardingGoalSetter && (!settings.sisuGoals || settings.sisuGoals.length === 0)) {
-        setShowGoalSetter(true);
-    } else if (!newUser.hasSeenOnboarding) {
-        setShowTour(true);
-    }
+    handleEnterApp(); // Enter app immediately after fresh login
   };
 
   const handlePlanSelect = (plan: PlanType) => {
@@ -143,7 +154,6 @@ const App: React.FC = () => {
           saveUserSession(updatedUser);
           setUser(updatedUser);
           setShowGoalSetter(false);
-          // Se o usuário já escolheu o plano (que deve ter escolhido antes de chegar aqui), verifica tour
           if (!updatedUser.hasSeenOnboarding) setShowTour(true);
       }
   };
@@ -154,6 +164,7 @@ const App: React.FC = () => {
     setCurrentView('user_area');
     setShowPlanSelection(false);
     setShowGoalSetter(false);
+    setShowLanding(true); // Return to landing page
   };
 
   const handleUpdateUser = (updatedUser: User) => setUser(updatedUser);
@@ -464,13 +475,18 @@ const App: React.FC = () => {
   };
 
   if (authLoading) return <div className="h-screen flex items-center justify-center bg-slate-950"><LoadingSpinner/></div>;
-  if (!user) return <LoginPage onLogin={handleLogin} />;
+  
+  // Render Landing Page first, even if logged in (unless explicitly entered app or admin)
+  if (showLanding || !user) {
+      return <LoginPage onLogin={handleLogin} user={user} onEnterApp={handleEnterApp} />;
+  }
   
   // Admin Route
-  if (currentView === 'admin' && user.isAdmin) {
+  if (currentView === 'admin' && user?.isAdmin) {
       return <AdminDashboard onLogout={handleLogout} onBackToApp={() => setCurrentView('user_area')} />;
   }
 
+  // Modals controlled by state set in handleEnterApp
   if (showGoalSetter) return <OnboardingGoalSetter user={user} onComplete={handleCompleteGoalSetting} onUpdateSettings={setSettings} />;
   if (showPlanSelection) return <PlanSelection onSelectPlan={handlePlanSelect} />;
 
