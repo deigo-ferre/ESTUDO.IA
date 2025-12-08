@@ -1,9 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-// CONFIGURAÇÃO DE SUPABASE (VITE)
-// Use import.meta.env em vez de process.env no frontend
-const SUPABASE_URL = import.meta.env?.VITE_SUPABASE_URL || 'https://cgnhsnvmmrwtburialpx.supabase.co';
-const SUPABASE_ANON_KEY = import.meta.env?.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNnbmhzbnZtbXJ3dGJ1cmlhbHB4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3ODIzMzAsImV4cCI6MjA4MDM1ODMzMH0.1vr_LOxGyqoRpUVMoE40DLZnusqp9byav9sIRAiJcvQ';
+// CONFIGURAÇÃO SUPABASE (ADAPTADA PARA NEXT.JS)
+// No Next.js usamos process.env e o prefixo NEXT_PUBLIC_ para variáveis visíveis no front
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.error('⚠️ ATENÇÃO: Variáveis de ambiente do Supabase não encontradas.');
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -12,7 +16,7 @@ export const checkConnection = async () => {
     try {
         const { data, error } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
         if (error) throw error;
-        console.log('✅ Conexão com Supabase estabelecida.');
+        console.log('✅ Conexão com Supabase estabelecida (Next.js).');
         return true;
     } catch (e) {
         console.error('❌ Erro ao conectar com Supabase:', e);
