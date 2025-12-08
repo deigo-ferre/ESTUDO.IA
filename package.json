@@ -16,6 +16,7 @@
     "@stripe/react-stripe-js": "^2.1.0",
     "@stripe/stripe-js": "^1.54.0",
     "@supabase/supabase-js": "^2.39.0",
+    "@vercel/node": "^5.5.15",
     "concurrently": "^8.2.2",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
