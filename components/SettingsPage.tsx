@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, UserSettings, SisuGoal, SavedReport, SavedExam } from '../types';
-import { getSettings, saveSettings, getUserSession, saveUserSession, getReports, deleteReport, getExams, deleteExam } from '../services/storageService';
+import { getSettings, saveSettings, getUserSession, saveUserSession, getReports, deleteReport, getExams, deleteExam, cancelUserSubscription } from '../services/storageService';
 import { estimateSisuCutoff } from '../services/geminiService';
+import { requestSubscriptionCancellation } from '../services/paymentService';
 import WeeklyReportModal from './WeeklyReportModal';
 
 interface SettingsPageProps {
@@ -37,6 +38,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
   const [reports, setReports] = useState<SavedReport[]>([]);
   const [viewingReport, setViewingReport] = useState<SavedReport | null>(null);
   const [exams, setExams] = useState<SavedExam[]>([]);
+
+  // Cancel States
+  const [isCancelling, setIsCancelling] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -147,6 +151,36 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
       if(window.confirm("Tem certeza que deseja excluir este item do histórico?")) {
           deleteExam(id);
           setExams(prev => prev.filter(e => e.id !== id));
+      }
+  };
+
+  const handleCancelSubscription = async () => {
+      if (!user) return;
+      
+      const confirm = window.confirm("Tem certeza que deseja cancelar sua assinatura Premium? \n\n- Suas cobranças futuras serão suspensas imediatamente.\n- Você voltará para o plano Gratuito.");
+      
+      if (confirm) {
+          setIsCancelling(true);
+          try {
+              // 1. Tenta comunicar com backend para suspender no Mercado Pago
+              const serverSuccess = await requestSubscriptionCancellation(user.id);
+              
+              if (serverSuccess) {
+                  // 2. Atualiza localmente
+                  const updatedUser = cancelUserSubscription();
+                  if (updatedUser) {
+                      setUser(updatedUser);
+                      onUpdateUser(updatedUser);
+                      alert("Assinatura cancelada com sucesso. Você não será mais cobrado.");
+                  }
+              } else {
+                  alert("Houve um erro ao comunicar com o servidor de pagamento. Tente novamente mais tarde.");
+              }
+          } catch (error) {
+              alert("Erro ao processar cancelamento.");
+          } finally {
+              setIsCancelling(false);
+          }
       }
   };
 
@@ -495,12 +529,27 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                         <div>
                             <p className={`text-sm font-bold ${labelClass}`}>Plano Atual</p>
                             <p className={`text-lg font-black ${textTitle}`}>{user.planType}</p>
-                            {user.planType !== 'PREMIUM' && (
+                            {user.planType !== 'PREMIUM' && user.planType !== 'ADVANCED' && (
                                 <button onClick={() => alert("Navegar para seleção de planos")} className="text-indigo-600 text-sm font-bold hover:underline">
                                     Fazer Upgrade
                                 </button>
                             )}
                         </div>
+
+                        {/* CANCEL SUBSCRIPTION SECTION - Only visible for PAID users */}
+                        {(user.planType === 'PREMIUM' || user.planType === 'ADVANCED') && (
+                            <div className={`p-4 rounded-lg border ${isDark ? 'bg-red-900/10 border-red-900/30' : 'bg-red-50 border-red-100'}`}>
+                                <h4 className="text-sm font-bold text-red-600 mb-2">Gerenciar Assinatura</h4>
+                                <p className={`text-xs mb-4 ${textSub}`}>Você está em um plano pago. Ao cancelar, sua assinatura será revertida para o plano Gratuito e cobranças futuras serão suspensas imediatamente.</p>
+                                <button 
+                                    onClick={handleCancelSubscription}
+                                    disabled={isCancelling}
+                                    className={`text-xs font-bold px-4 py-2 rounded border border-red-200 text-red-600 hover:bg-red-50 transition-colors ${isCancelling ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >
+                                    {isCancelling ? 'Cancelando...' : 'Cancelar Assinatura e Suspender Cobrança'}
+                                </button>
+                            </div>
+                        )}
 
                         <div>
                             <p className={`text-sm font-bold ${labelClass}`}>Tokens de IA Consumidos (Total)</p>

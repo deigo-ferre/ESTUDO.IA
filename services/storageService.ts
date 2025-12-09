@@ -209,6 +209,17 @@ export const setUserPlan = (plan: PlanType) => {
     }
 }
 
+export const cancelUserSubscription = () => {
+    const user = getUserSession();
+    if (user) {
+        user.planType = 'FREE';
+        // Não removemos hasSelectedPlan para não forçar o modal de seleção de novo, 
+        // mas o usuário estará no plano FREE.
+        saveUserSession(user);
+    }
+    return user;
+}
+
 const getWeekNumber = (d: Date) => {
     d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
     d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));

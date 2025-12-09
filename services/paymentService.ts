@@ -92,6 +92,27 @@ export const createPreference = async (plan: PlanType): Promise<{ preferenceId?:
     }
 };
 
+export const requestSubscriptionCancellation = async (userId: string, reason: string = 'user_request'): Promise<boolean> => {
+    try {
+        const response = await fetch(`${API_URL}/cancel_subscription`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, reason })
+        });
+
+        if (!response.ok) {
+            throw new Error('Falha ao cancelar assinatura no servidor.');
+        }
+
+        return true;
+    } catch (error) {
+        console.error("Erro ao cancelar assinatura:", error);
+        // Em caso de falha de rede no MVP, podemos assumir sucesso local para não prender o usuário
+        // Em produção, isso deve ser tratado com retries.
+        return false;
+    }
+};
+
 // Callback para processamento do Brick
 export const processBrickPayment = async (paymentData: any) => {
     return new Promise<{ status: 'approved' | 'rejected' }>((resolve, reject) => {
