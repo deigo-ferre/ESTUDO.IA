@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '../services/supabaseClient'; // Importação correta
 import { User, UserSettings, SisuGoal, SavedReport, SavedExam } from '../types';
 import { getSettings, saveSettings, getUserSession, saveUserSession, getReports, deleteReport, getExams, deleteExam, cancelUserSubscription } from '../services/storageService';
 import { estimateSisuCutoff } from '../services/geminiService';
@@ -15,11 +16,11 @@ interface SettingsPageProps {
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpdateSettings, onBack, onResumeExam }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'sisu' | 'history' | 'reports' | 'theme' | 'system'>('profile');
   const [activeHistoryTab, setActiveHistoryTab] = useState<'simulados' | 'redacoes'>('simulados');
-  
+   
   const [user, setUser] = useState<User | null>(getUserSession());
   const [settings, setSettings] = useState<UserSettings>(getSettings());
   const isDark = settings.theme === 'dark';
-  
+   
   // Profile Form States
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -154,19 +155,32 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
       }
   };
 
+  // --- AQUI ESTÁ A CORREÇÃO PRINCIPAL ---
   const handleCancelSubscription = async () => {
-      if (!user) return;
+      // 1. Pega o usuário REAL do Supabase (UUID verdadeiro)
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      
+      // Se não tiver usuário logado no Supabase, usa o do estado local como fallback, 
+      // mas o authUser.id é o que vai fazer funcionar.
+      const realUserId = authUser?.id || user?.id;
+
+      if (!realUserId) {
+        alert("Erro: Usuário não identificado.");
+        return;
+      }
       
       const confirm = window.confirm("Tem certeza que deseja cancelar sua assinatura Premium? \n\n- Suas cobranças futuras serão suspensas imediatamente.\n- Você voltará para o plano Gratuito.");
       
       if (confirm) {
           setIsCancelling(true);
           try {
-              // 1. Tenta comunicar com backend para suspender no Mercado Pago
-              const serverSuccess = await requestSubscriptionCancellation(user.id);
+              console.log("Iniciando cancelamento para o ID:", realUserId); // Debug para você ver o ID certo
+
+              // 2. Envia o ID CORRETO para o backend
+              const serverSuccess = await requestSubscriptionCancellation(realUserId);
               
               if (serverSuccess) {
-                  // 2. Atualiza localmente
+                  // 3. Atualiza localmente
                   const updatedUser = cancelUserSubscription();
                   if (updatedUser) {
                       setUser(updatedUser);
@@ -177,12 +191,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                   alert("Houve um erro ao comunicar com o servidor de pagamento. Tente novamente mais tarde.");
               }
           } catch (error) {
+              console.error("Erro no cancelamento:", error);
               alert("Erro ao processar cancelamento.");
           } finally {
               setIsCancelling(false);
           }
       }
   };
+  // --- FIM DA CORREÇÃO (Removi o código duplicado que estava aqui) ---
 
   const ChangePasswordModal = () => (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
