@@ -113,13 +113,40 @@ export const requestSubscriptionCancellation = async (userId: string, reason: st
     }
 };
 
-// Callback para processamento do Brick
+// Callback para processamento do Brick REAL
 export const processBrickPayment = async (paymentData: any) => {
-    return new Promise<{ status: 'approved' | 'rejected' }>((resolve, reject) => {
-        console.log("Dados do pagamento recebidos pelo Brick:", paymentData);
-        // O Brick do MP lida com a tokenização. Em um fluxo real avançado,
-        // você enviaria esses dados para o backend validar novamente, 
-        // mas o auto_return configurado na preferência já ajuda no redirecionamento.
-        resolve({ status: 'approved' });
+    return new Promise<{ status: 'approved' | 'rejected' }>(async (resolve, reject) => {
+        try {
+            console.log("Enviando pagamento para o backend...", paymentData);
+            
+            // 1. Chama o arquivo que acabamos de criar
+            const response = await fetch(`${API_URL}/process_payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(paymentData)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Erro no processamento:", errorData);
+                reject(errorData.error || "Erro ao processar pagamento");
+                return;
+            }
+
+            // 2. Recebe a resposta REAL do Mercado Pago
+            const data = await response.json();
+            console.log("Status do pagamento:", data.status);
+
+            if (data.status === 'approved') {
+                resolve({ status: 'approved' });
+            } else {
+                // Se foi recusado ou pendente
+                resolve({ status: 'rejected' }); 
+            }
+
+        } catch (error) {
+            console.error("Erro de comunicação:", error);
+            reject("Erro ao conectar com servidor de pagamento");
+        }
     });
 };
