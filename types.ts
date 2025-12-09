@@ -1,4 +1,5 @@
 export type PlanType = 'FREE' | 'ADVANCED' | 'PREMIUM';
+export type SubscriptionStatus = 'active' | 'suspended' | 'past_due' | 'canceled';
 
 export interface UserUsage {
     essaysCount: number;
@@ -18,8 +19,9 @@ export interface User {
   hasSeenOnboarding?: boolean;
   hasSeenOnboardingGoalSetter?: boolean;
   hasSeenEssayDemo?: boolean;
-  hasSelectedPlan?: boolean; // Nova propriedade
+  hasSelectedPlan?: boolean; 
   planType: PlanType;
+  subscriptionStatus?: SubscriptionStatus; // Novo campo
   usage: UserUsage;
   tokensConsumed: number;
   isAdmin?: boolean;

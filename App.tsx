@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { gradeEssay, transcribeImage, generateEssayTheme } from './services/geminiService';
 import { saveUserSession, getUserSession, clearUserSession, getSettings, checkUsageLimit, incrementUsage, upgradeUser, saveStandaloneEssay, setUserPlan, getExamById, saveExamProgress } from './services/storageService';
@@ -16,6 +15,7 @@ import Logo from './components/Logo';
 import OnboardingGoalSetter from './components/OnboardingGoalSetter';
 import EssayCorrectionDemo from './components/EssayCorrectionDemo';
 import AdminDashboard from './components/AdminDashboard';
+import SuspendedAccountModal from './components/SuspendedAccountModal';
 
 type InputMode = 'text' | 'camera' | 'upload' | 'editor';
 type AppView = 'essay' | 'schedule' | 'simulado' | 'user_area' | 'settings' | 'admin';
@@ -122,7 +122,7 @@ const App: React.FC = () => {
   const handleLogin = (newUser: User) => {
     // --- ADMIN CHECK LOGIC ---
     if (newUser.email === 'admin@estude.ia') {
-        const adminUser = { ...newUser, isAdmin: true, planType: 'PREMIUM' as PlanType, name: 'Administrador' };
+        const adminUser = { ...newUser, isAdmin: true, planType: 'PREMIUM' as PlanType, name: 'Administrador', subscriptionStatus: 'active' as const };
         setUser(adminUser);
         saveUserSession(adminUser);
         setCurrentView('admin');
@@ -487,6 +487,16 @@ const App: React.FC = () => {
   // Admin Route
   if (currentView === 'admin' && user?.isAdmin) {
       return <AdminDashboard onLogout={handleLogout} onBackToApp={() => setCurrentView('user_area')} />;
+  }
+
+  // SUSPENDED CHECK
+  if (user && user.subscriptionStatus === 'suspended') {
+      return (
+          <SuspendedAccountModal 
+              onRetryPayment={() => setShowPlanSelection(true)}
+              onContactSupport={() => alert('Entre em contato em suporte@estude.ia')}
+          />
+      );
   }
 
   // Modals controlled by state set in handleEnterApp

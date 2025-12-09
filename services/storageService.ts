@@ -48,6 +48,7 @@ export const saveUserSession = (user: User) => {
   const userWithDefaults: User = {
     ...user,
     planType: user.planType || 'FREE',
+    subscriptionStatus: user.subscriptionStatus || 'active', // Default para evitar bloqueio acidental
     hasSeenOnboarding: user.hasSeenOnboarding ?? false,
     hasSeenOnboardingGoalSetter: user.hasSeenOnboardingGoalSetter ?? false,
     hasSeenEssayDemo: user.hasSeenEssayDemo ?? false,
@@ -80,6 +81,7 @@ export const getUserSession = (): User | null => {
   
   // Runtime migration & Defaulting
   user.planType = user.planType || 'FREE';
+  user.subscriptionStatus = user.subscriptionStatus || 'active';
   user.hasSeenOnboarding = user.hasSeenOnboarding ?? false;
   user.hasSeenOnboardingGoalSetter = user.hasSeenOnboardingGoalSetter ?? false;
   user.hasSeenEssayDemo = user.hasSeenEssayDemo ?? false;
@@ -111,6 +113,11 @@ export const clearUserSession = () => localStorage.removeItem(KEYS.USER_SESSION)
 export const checkUsageLimit = (type: 'essay' | 'exam' | 'schedule'): { allowed: boolean; message?: string } => {
     const user = getUserSession();
     if (!user) return { allowed: false, message: "Usuário não logado." };
+    
+    // Check Subscription Status First
+    if (user.subscriptionStatus === 'suspended') {
+        return { allowed: false, message: "Serviço suspenso por falta de pagamento." };
+    }
     
     // Defensive check (though getUserSession handles it)
     if (!user.usage) {
@@ -205,6 +212,7 @@ export const setUserPlan = (plan: PlanType) => {
     if (user) {
         user.planType = plan;
         user.hasSelectedPlan = true; // Confirma que um plano foi escolhido
+        user.subscriptionStatus = 'active'; // Reset status on upgrade/plan change
         saveUserSession(user);
     }
 }
@@ -213,6 +221,7 @@ export const cancelUserSubscription = () => {
     const user = getUserSession();
     if (user) {
         user.planType = 'FREE';
+        user.subscriptionStatus = 'active'; // Free users are active by default
         // Não removemos hasSelectedPlan para não forçar o modal de seleção de novo, 
         // mas o usuário estará no plano FREE.
         saveUserSession(user);

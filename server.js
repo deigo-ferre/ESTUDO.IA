@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { MercadoPagoConfig, Preference, PreApproval } from 'mercadopago';
+import { MercadoPagoConfig, Preference, PreApproval, Payment } from 'mercadopago';
 import dotenv from 'dotenv';
 
 // Carrega variáveis de ambiente
@@ -44,6 +44,7 @@ app.post('/create_preference', async (req, res) => {
                 pending: 'http://localhost:5173/?status=pending',
             },
             auto_return: 'approved',
+            // external_reference: userId, // Em produção, passar o ID do usuário aqui para vincular no webhook
         };
 
         const preference = new Preference(client);
@@ -85,6 +86,43 @@ app.post('/cancel_subscription', async (req, res) => {
     } catch (error) {
         console.error("Erro ao cancelar assinatura:", error);
         res.status(500).json({ error: "Erro ao processar cancelamento." });
+    }
+});
+
+// WEBHOOK - Recebe notificações do Mercado Pago
+app.post('/webhook', async (req, res) => {
+    const { type, data } = req.body;
+    // O Mercado Pago envia o ID do recurso em data.id
+    
+    console.log(`Webhook recebido: ${type}`, data);
+
+    try {
+        if (type === 'payment') {
+            const paymentClient = new Payment(client);
+            const payment = await paymentClient.get({ id: data.id });
+            
+            const status = payment.status;
+            const externalRef = payment.external_reference; // ID do Usuário
+
+            console.log(`Pagamento ${data.id}: Status ${status} para usuário ${externalRef}`);
+
+            if (status === 'rejected' || status === 'cancelled') {
+                // LÓGICA DE SUSPENSÃO:
+                // 1. Conectar ao banco de dados (Supabase, MongoDB, etc)
+                // 2. Buscar o usuário pelo externalRef
+                // 3. Atualizar subscriptionStatus = 'suspended'
+                // 4. Enviar email de aviso (opcional)
+                console.log(`⚠️ SUSPENDER SERVIÇO para usuário ${externalRef} devido a falha no pagamento.`);
+            } else if (status === 'approved') {
+                console.log(`✅ Pagamento aprovado. Liberar/Manter serviço para ${externalRef}.`);
+            }
+        }
+        
+        // Responder 200 OK para o Mercado Pago não reenviar
+        res.sendStatus(200);
+    } catch (error) {
+        console.error("Erro ao processar webhook:", error);
+        res.sendStatus(500);
     }
 });
 
