@@ -21,7 +21,7 @@ export interface User {
   hasSeenEssayDemo?: boolean;
   hasSelectedPlan?: boolean; 
   planType: PlanType;
-  subscriptionStatus?: SubscriptionStatus; // Novo campo
+  subscriptionStatus?: SubscriptionStatus;
   usage: UserUsage;
   tokensConsumed: number;
   isAdmin?: boolean;
@@ -115,7 +115,7 @@ export interface SisuGoal {
     source?: string;
 }
 
-export type AreaConhecimento = 'Linguagens' | 'Humanas' | 'Natureza' | 'Matemática' | 'Redação';
+export type AreaConhecimento = 'Linguagens' | 'Humanas' | 'Natureza' | 'Matemática' | 'Redação' | 'Geral';
 export type LinguaEstrangeira = 'Inglês' | 'Espanhol';
 
 export interface ExamConfig {
@@ -125,7 +125,8 @@ export interface ExamConfig {
   foreignLanguage?: LinguaEstrangeira; 
   durationMinutes: number;
   totalQuestions: number;
-  turboTopics?: string[]; 
+  turboTopics?: string[];
+  isTurbo?: boolean; // Adicionado para corrigir erro
 }
 
 export interface BatchRequest {
@@ -149,6 +150,9 @@ export interface ExamState {
   essayImage?: string | null;
   activeFilter?: ImageFilter;
   lastEssayImageData?: ImageData | null;
+  // Propriedades opcionais para compatibilidade
+  currentQuestionIndex?: number;
+  answers?: Record<string, any>;
 }
 
 export interface ExamPerformance {
@@ -158,20 +162,26 @@ export interface ExamPerformance {
   correctCount: number;
   totalQuestions: number;
   sisuComparisons?: SisuEstimation[];
-  wrongTopics?: string[]; 
+  wrongTopics?: string[];
+  byArea?: Record<string, any>; // Compatibilidade
+  totalCount?: number; // Compatibilidade
 }
 
 export interface SavedSchedule {
   id: string;
+  userId: string; // Adicionado para corrigir erro
   createdAt: string;
+  active: boolean; // Adicionado
   profile: StudyProfile;
   result: StudyScheduleResult;
-  completedItems: string[];
-  archived: boolean;
+  completedTasks?: Record<string, boolean>; // Renomeado/Adicionado
+  completedItems?: string[]; // Legacy compatibility
+  archived?: boolean;
 }
 
 export interface SavedExam {
   id: string;
+  userId: string; // Adicionado para corrigir erro
   createdAt: string;
   updatedAt: string;
   status: 'in_progress' | 'completed';
@@ -186,7 +196,7 @@ export interface UserSettings {
   theme: 'light' | 'dark' | 'system';
   fontStyle: 'sans' | 'serif' | 'mono';
   fontSize: 'small' | 'base' | 'large';
-  sisuGoals?: SisuGoal[]; 
+    sisuGoals?: SisuGoal[];
 }
 
 export interface WeeklyReportStats {
@@ -197,15 +207,16 @@ export interface WeeklyReportStats {
     avgEssay: number;
     tasksCompleted: number;
     tasksProgress: number;
+    averageScore: number; // Adicionado para corrigir erro no Modal
 }
 
 export interface SavedReport {
     id: string;
     userId: string;
-    createdAt: string;
+    createdAt?: string; // tornado opcional para compatibilidade
     startDate: string;
     endDate: string;
-    type: 'manual' | 'auto';
+    type?: 'manual' | 'auto';
     stats: WeeklyReportStats;
 }
 

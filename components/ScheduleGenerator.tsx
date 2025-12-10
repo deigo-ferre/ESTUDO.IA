@@ -99,12 +99,15 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ onNavigate, onBac
   const handleScoreChange = (field: keyof EnemScores, value: string) => { const num = parseInt(value) || 0; if (num <= 1000) setScores((prev: EnemScores) => ({ ...prev, [field]: num })); };
   const handleStartNew = () => { if (activeSchedule) { setProfile(activeSchedule.profile); if (activeSchedule.profile.scores) { setScores(activeSchedule.profile.scores); setActiveTab('scores'); } else if (activeSchedule.profile.difficulties) { setSelectedSubjects(activeSchedule.profile.difficulties.split(', ').filter(Boolean)); setActiveTab('manual'); } } setActiveSchedule(null); setError(null); setLimitError(null); };
   
-  const handleGenerate = async (e: React.FormEvent) => {
+    const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (activeTab === 'manual' && selectedSubjects.length === 0) { setError("Selecione pelo menos uma matéria."); return; }
     if (activeTab === 'scores' && Object.values(scores).some(v => v === 0)) { setError("Por favor, preencha todas as notas."); return; }
     
-    const limit = checkUsageLimit('schedule');
+    const user = getUserSession();
+    if (!user) { setError('Usuário não autenticado.'); return; }
+
+    const limit = checkUsageLimit(user, 'schedule');
     if (!limit.allowed) { setLimitError(limit.message || "Limite atingido."); return; }
 
     setIsGenerating(true);
@@ -112,8 +115,8 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ onNavigate, onBac
     try {
       const profilePayload: StudyProfile = { ...profile, difficulties: activeTab === 'manual' ? selectedSubjects.join(', ') : '', scores: activeTab === 'scores' ? scores : undefined };
       const result = await generateStudySchedule(profilePayload);
-      const saved = saveSchedule(profilePayload, result);
-      incrementUsage('schedule');
+    const saved = saveSchedule(profilePayload, result);
+    incrementUsage(user, 'schedule');
       setActiveSchedule(saved);
       const allSchedules = getSchedules();
       setHistory(allSchedules.filter((s: SavedSchedule) => s.archived));
@@ -122,14 +125,16 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ onNavigate, onBac
 
   const handleRegenerate = async () => {
       if (!activeSchedule) return;
-      const limit = checkUsageLimit('schedule');
-      if (!limit.allowed) { setLimitError(limit.message || "Limite atingido."); return; }
+    const user = getUserSession();
+    if (!user) { setError('Usuário não autenticado.'); return; }
+    const limit = checkUsageLimit(user, 'schedule');
+    if (!limit.allowed) { setLimitError(limit.message || "Limite atingido."); return; }
       if (!window.confirm("A IA criará uma nova versão. Continuar?")) return;
       setIsGenerating(true); setError(null);
       try {
           const result = await generateStudySchedule(activeSchedule.profile);
           const saved = saveSchedule(activeSchedule.profile, result);
-          incrementUsage('schedule');
+          incrementUsage(user, 'schedule');
           setActiveSchedule(saved);
       } catch (err: any) { setError(err.message); } finally { setIsGenerating(false); }
   };
@@ -163,7 +168,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ onNavigate, onBac
             <p className={`mt-1 ${textSub}`}>Foco na aprovação em <strong className="text-indigo-600">{profile.course || 'seu curso'}</strong>.</p>
           </div>
 
-          {limitError && <div className="bg-fuchsia-50 border-l-4 border-fuchsia-500 p-6 rounded-r-xl shadow-md mb-8"><p className="text-fuchsia-800 font-bold text-center">{limitError}</p><button onClick={upgradeUser} className="mt-2 w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-4 py-2 rounded-lg">Fazer Upgrade</button></div>}
+          {limitError && <div className="bg-fuchsia-50 border-l-4 border-fuchsia-500 p-6 rounded-r-xl shadow-md mb-8"><p className="text-fuchsia-800 font-bold text-center">{limitError}</p><button onClick={() => { const u = getUserSession(); if (u) upgradeUser(u, 'PREMIUM'); }} className="mt-2 w-full bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-4 py-2 rounded-lg">Fazer Upgrade</button></div>}
 
           <div className={`flex p-1 rounded-xl mb-8 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
             <button type="button" onClick={() => { setActiveTab('manual'); setError(null); }} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${activeTab === 'manual' ? (isDark ? 'bg-slate-700 text-white shadow' : 'bg-white text-indigo-600 shadow') : (isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-700')}`}>Seleção Manual</button>
