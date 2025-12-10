@@ -1,6 +1,11 @@
 import React from 'react';
 
-const SimuladoGenerator: React.FC = () => {
+interface SimuladoGeneratorProps {
+  resumeExamId?: string | null;
+  onBack?: () => void;
+}
+
+const SimuladoGenerator: React.FC<SimuladoGeneratorProps> = ({ resumeExamId, onBack }) => {
   return (
     <div className="p-8">
       <h2 className="text-2xl font-bold">Simulado Generator (placeholder)</h2>

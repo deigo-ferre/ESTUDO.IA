@@ -112,14 +112,14 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ onNavigate, onBac
 
     setIsGenerating(true);
     setError(null);
-    try {
-      const profilePayload: StudyProfile = { ...profile, difficulties: activeTab === 'manual' ? selectedSubjects.join(', ') : '', scores: activeTab === 'scores' ? scores : undefined };
-      const result = await generateStudySchedule(profilePayload);
-    const saved = saveSchedule(profilePayload, result);
-    incrementUsage(user, 'schedule');
-      setActiveSchedule(saved);
-      const allSchedules = getSchedules();
-      setHistory(allSchedules.filter((s: SavedSchedule) => s.archived));
+        try {
+            const profilePayload: StudyProfile = { ...profile, difficulties: activeTab === 'manual' ? selectedSubjects.join(', ') : '', scores: activeTab === 'scores' ? scores : undefined };
+            const result = await generateStudySchedule(profilePayload);
+            const saved = saveSchedule(profilePayload, result);
+            incrementUsage(user, 'schedule');
+            if (saved) setActiveSchedule(saved as SavedSchedule);
+            const allSchedules = getSchedules();
+            setHistory(allSchedules.filter((s: SavedSchedule) => s.archived));
     } catch (err: any) { setError(err.message); } finally { setIsGenerating(false); }
   };
 
@@ -135,7 +135,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({ onNavigate, onBac
           const result = await generateStudySchedule(activeSchedule.profile);
           const saved = saveSchedule(activeSchedule.profile, result);
           incrementUsage(user, 'schedule');
-          setActiveSchedule(saved);
+          if (saved) setActiveSchedule(saved as SavedSchedule);
       } catch (err: any) { setError(err.message); } finally { setIsGenerating(false); }
   };
 

@@ -24,17 +24,26 @@ const WeeklyReportModal: React.FC<WeeklyReportModalProps> = ({ onClose, user, ex
     // Calculate stats on date change (debounced or effect)
     useEffect(() => {
         if (!existingReport) {
-            const calculated = calculateReportStats(startDate, endDate);
+            const calculated = calculateReportStats(user, startDate, endDate);
             setStats(calculated);
             setIsSaved(false); // Reset save state if dates change
         }
-    }, [startDate, endDate, existingReport]);
+    }, [startDate, endDate, existingReport, user]);
 
     const dateRangeStr = `${startDate.toLocaleDateString('pt-BR')} - ${endDate.toLocaleDateString('pt-BR')}`;
 
     const handleSave = () => {
         if (!stats) return;
-        saveReport(stats, startDate, endDate, 'manual');
+        const reportToSave = {
+            id: Date.now().toString(),
+            userId: user.id,
+            createdAt: new Date().toISOString(),
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString(),
+            type: 'manual' as const,
+            stats
+        };
+        saveReport(reportToSave);
         setIsSaved(true);
     };
 

@@ -7,7 +7,7 @@ import ResultCard from './components/ResultCard';
 
 type ImageFilter = 'none' | 'grayscale' | 'contrast';
 
-const AREAS_INFO = {
+const AREAS_INFO: Record<string, { color: string; label: string }> = {
   'Linguagens': { color: 'rose', label: 'Linguagens e Códigos' },
   'Humanas': { color: 'amber', label: 'Ciências Humanas' },
   'Natureza': { color: 'green', label: 'Ciências da Natureza' },
@@ -162,7 +162,7 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
             {error && (
                 <div className="bg-fuchsia-50 border-l-4 border-fuchsia-500 p-6 rounded-r-xl shadow-md flex flex-col items-center justify-between gap-4 mb-8">
                     <p className="text-fuchsia-800 font-bold">{error}</p>
-                    <button onClick={upgradeUser} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-6 py-2 rounded-lg shadow whitespace-nowrap">
+                    <button onClick={() => { const u = getUserSession(); if (u) upgradeUser(u, 'PREMIUM'); }} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-6 py-2 rounded-lg shadow whitespace-nowrap">
                         Fazer Upgrade para Premium
                     </button>
                 </div>

@@ -27,7 +27,11 @@ export const upgradeUser = (user: User, plan: 'PREMIUM' | 'ADVANCED' | 'FREE') =
     saveUserSession(updatedUser);
     return updatedUser;
 };
-export const setUserPlan = upgradeUser; // Alias para compatibilidade
+export const setUserPlan = (plan: 'PREMIUM' | 'ADVANCED' | 'FREE') => {
+    const user = getUserSession();
+    if (!user) return null;
+    return upgradeUser(user, plan);
+}; // Compatibilidade: aceita apenas o plano
 
 export const cancelUserSubscription = (): User | null => {
     const user = getUserSession();
@@ -214,28 +218,45 @@ export const calculateReportStats = (user: User, startDate?: Date, endDate?: Dat
 const getAllSchedulesRaw = (): any[] => {
     try { return JSON.parse(localStorage.getItem(KEYS.SCHEDULES) || '[]'); } catch { return []; }
 };
-export const saveSchedule = (schedule: StudyScheduleResult) => {
+
+// Save schedule accepts profile + result to construct a SavedSchedule object
+export const saveSchedule = (profile: any, result: any) => {
     const userId = getCurrentUserId();
-    if (!userId) return;
+    if (!userId) return undefined;
+    const id = Date.now().toString();
+    const saved = {
+        id,
+        userId,
+        createdAt: new Date().toISOString(),
+        active: true,
+        profile,
+        result,
+        completedItems: [],
+        archived: false
+    };
     let all = getAllSchedulesRaw().map((s: any) => s.userId === userId ? { ...s, active: false } : s);
-    all.unshift({ ...schedule, id: Date.now().toString(), userId, active: true, createdAt: new Date().toISOString() });
+    all.unshift(saved);
     localStorage.setItem(KEYS.SCHEDULES, JSON.stringify(all));
-    return { ...schedule, id: Date.now().toString() };
+    return saved;
 };
+
 export const getSchedules = (): any[] => {
     const userId = getCurrentUserId();
     if (!userId) return [];
     return getAllSchedulesRaw().filter((s: any) => s.userId === userId);
 };
-export const toggleScheduleTask = (scheduleId: string, dayIndex: number, taskIndex: number) => {
+
+// Toggle by taskId string to match component usage (legacy support)
+export const toggleScheduleTask = (scheduleId: string, taskId: string) => {
     const userId = getCurrentUserId();
-    if (!userId) return;
+    if (!userId) return null;
     const all = getAllSchedulesRaw();
     const idx = all.findIndex((s: any) => s.id === scheduleId && s.userId === userId);
     if (idx >= 0) {
-        if (!all[idx].completedTasks) all[idx].completedTasks = {};
-        const k = `${dayIndex}-${taskIndex}`;
-        all[idx].completedTasks[k] = !all[idx].completedTasks[k];
+        if (!Array.isArray(all[idx].completedItems)) all[idx].completedItems = [];
+        const exists = all[idx].completedItems.includes(taskId);
+        if (exists) all[idx].completedItems = all[idx].completedItems.filter((t: string) => t !== taskId);
+        else all[idx].completedItems.push(taskId);
         localStorage.setItem(KEYS.SCHEDULES, JSON.stringify(all));
         return all[idx];
     }
@@ -264,8 +285,10 @@ export const checkUsageLimit = (arg1: User | string, arg2?: string): { allowed: 
     // Mapeia os nomes de tipos para as chaves de uso no objeto User
     const usageKey = type === 'essay' ? 'essaysCount' : type === 'exam' ? 'examsCount' : 'schedulesCount';
     const count = user.usage?.[usageKey as keyof typeof user.usage] || 0;
-    
-    if (count >= (LIMITS[type] || 1)) {
+    const numericCount = Number(count) || 0;
+    const limit = LIMITS[type] ?? 1;
+
+    if (numericCount >= limit) {
         return { 
             allowed: false, 
             message: `Limite do plano Gratuito atingido. Faça upgrade para continuar.` 
@@ -310,3 +333,24 @@ export const logTokens = (count: number) => {
     }
 };
 export const authenticateUser = (email: string) => null;
+
+// Admin helpers (basic local fallback)
+export const getAdminStats = () => {
+    const allExams = getAllExamsRaw();
+    const allReports = getAllReportsRaw();
+    const allSchedules = getAllSchedulesRaw();
+    const tokens = Number(localStorage.getItem(KEYS.TOKENS) || 0);
+
+    return {
+        totalUsers: 1,
+        mrr: 0,
+        tokensConsumedGlobal: tokens,
+        activeUsersToday: 1,
+        totalRevenue: 0,
+        totalRevenueMonth: 0,
+        totalRevenueYear: 0,
+        examsCount: allExams.length,
+        reportsCount: allReports.length,
+        schedulesCount: allSchedules.length
+    };
+};

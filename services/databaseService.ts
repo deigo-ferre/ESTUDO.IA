@@ -73,6 +73,7 @@ export const dbGetExams = async (userId: string): Promise<SavedExam[]> => {
     
     // Map DB columns back to Frontend Types if needed
     return data.map((row: any) => ({
+        userId: userId,
         id: row.id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -112,8 +113,10 @@ export const dbGetSchedules = async (userId: string): Promise<SavedSchedule[]> =
     if (error) throw error;
 
     return data.map((row: any) => ({
+        userId: userId,
         id: row.id,
         createdAt: row.created_at,
+        active: row.active ?? true,
         profile: row.profile_data,
         result: row.result_data,
         completedItems: row.completed_items,
