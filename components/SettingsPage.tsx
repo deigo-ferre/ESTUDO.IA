@@ -155,12 +155,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
       }
   };
 
-  // --- FUNÇÃO DE CANCELAMENTO CORRIGIDA ---
   const handleCancelSubscription = async () => {
-      // 1. Pega o usuário REAL do Supabase (UUID verdadeiro)
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      
-      // Tenta usar o ID real do Supabase, se não tiver, tenta o local (mas o real é o que importa)
       const realUserId = authUser?.id || user?.id;
 
       if (!realUserId) {
@@ -173,13 +169,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
       if (confirm) {
           setIsCancelling(true);
           try {
-              console.log("Iniciando cancelamento para o ID:", realUserId); // Debug no console
+              console.log("Iniciando cancelamento para o ID:", realUserId);
 
-              // 2. Envia o ID CORRETO para o backend
               const serverSuccess = await requestSubscriptionCancellation(realUserId);
               
               if (serverSuccess) {
-                  // 3. Atualiza localmente
                   const updatedUser = cancelUserSubscription();
                   if (updatedUser) {
                       setUser(updatedUser);
@@ -194,6 +188,52 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
               alert("Erro ao processar cancelamento.");
           } finally {
               setIsCancelling(false);
+          }
+      }
+  };
+
+  const handleDeleteAccount = async () => {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const realUserId = authUser?.id || user?.id;
+
+      if (!realUserId) {
+          alert("Erro: Usuário não identificado.");
+          return;
+      }
+
+      const confirm1 = window.confirm("⚠️ TEM CERTEZA? \n\nAo excluir sua conta, todos os seus dados, simulados e redações serão apagados permanentemente. Esta ação não pode ser desfeita.");
+      
+      if (confirm1) {
+          const confirm2 = window.prompt("Para confirmar, digite EXCLUIR abaixo:");
+          
+          if (confirm2 === "EXCLUIR") {
+              setIsCancelling(true); 
+              try {
+                  const API_URL = import.meta.env?.VITE_API_URL || 'https://estudo-ia.vercel.app/api';
+                  
+                  const response = await fetch(`${API_URL}/delete_account`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ userId: realUserId })
+                  });
+
+                  if (response.ok) {
+                      alert("Sua conta foi excluída. Sentiremos sua falta! 👋");
+                      await supabase.auth.signOut();
+                      localStorage.clear();
+                      window.location.reload(); 
+                  } else {
+                      const data = await response.json();
+                      alert("Erro: " + (data.error || "Falha ao excluir conta."));
+                  }
+              } catch (error) {
+                  console.error("Erro:", error);
+                  alert("Erro de conexão ao tentar excluir conta.");
+              } finally {
+                  setIsCancelling(false);
+              }
+          } else if (confirm2 !== null) {
+              alert("Texto de confirmação incorreto. A conta não foi excluída.");
           }
       }
   };
@@ -592,6 +632,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                         <div className="pt-6 border-t border-slate-200">
                              <button onClick={() => alert("Limpar cache de dados")} className="text-red-500 font-bold text-sm hover:underline">Limpar Dados Locais</button>
                         </div>
+
+                        {/* SEÇÃO DE EXCLUIR CONTA - Visível APENAS para usuários FREE */}
+                        {user.planType === 'FREE' && (
+                            <div className={`mt-8 p-4 rounded-lg border border-red-200 ${isDark ? 'bg-red-900/10' : 'bg-red-50'}`}>
+                                <h4 className="text-sm font-bold text-red-600 mb-2">Zona de Perigo</h4>
+                                <p className={`text-xs mb-4 ${textSub}`}>Deseja excluir sua conta permanentemente? Todos os seus dados serão perdidos.</p>
+                                <button 
+                                    onClick={handleDeleteAccount}
+                                    disabled={isCancelling}
+                                    className="text-xs font-bold px-4 py-2 rounded border border-red-300 text-red-600 hover:bg-red-600 hover:text-white transition-colors"
+                                >
+                                    {isCancelling ? 'Processando...' : 'Excluir Minha Conta'}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
