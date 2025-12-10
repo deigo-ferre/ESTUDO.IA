@@ -7,7 +7,7 @@ import ResultCard from './ResultCard';
 
 type ImageFilter = 'none' | 'grayscale' | 'contrast';
 
-const AREAS_INFO = {
+const AREAS_INFO: Record<string, { color: string; label: string }> = {
   'Linguagens': { color: 'rose', label: 'Linguagens e Códigos' },
   'Humanas': { color: 'amber', label: 'Ciências Humanas' },
   'Natureza': { color: 'green', label: 'Ciências da Natureza' },
@@ -169,7 +169,7 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
             {error && (
                 <div className="bg-fuchsia-50 border-l-4 border-fuchsia-500 p-6 rounded-r-xl shadow-md flex flex-col items-center justify-between gap-4 mb-8">
                     <p className="text-fuchsia-800 font-bold">{error}</p>
-                    <button onClick={upgradeUser} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-6 py-2 rounded-lg shadow whitespace-nowrap">
+                    <button onClick={() => { const u = getUserSession(); if (u) upgradeUser(u, 'PREMIUM'); }} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-6 py-2 rounded-lg shadow whitespace-nowrap">
                         Fazer Upgrade para Premium
                     </button>
                 </div>
@@ -248,7 +248,7 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
                         </div>
 
                         {['Matemática', 'Humanas', 'Natureza', 'Linguagens'].map((area) => {
-                            const areaThemeColor = AREAS_INFO[area as AreaConhecimento]?.color || 'indigo';
+                            const areaThemeColor = AREAS_INFO[area]?.color || 'indigo';
                             return (
                                 <div key={area} className={`${isDark ? 'bg-slate-900 border-slate-800 hover:border-slate-700' : `bg-white border-slate-200 hover:border-${areaThemeColor}-200`} p-6 rounded-xl border-2 transition-all flex flex-col justify-between`}>
                                     <div>
@@ -772,7 +772,7 @@ const ExamResults: React.FC<{
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {Object.entries(performance.scoreByArea).map(([area, score]) => (
                             <div key={area} className={`p-4 rounded-xl border ${highlightClass}`}>
-                                <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{AREAS_INFO[area as AreaConhecimento]?.label || area}</p>
+                                <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{AREAS_INFO[area]?.label || area}</p>
                                 <div className={`text-3xl font-black mt-1 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{Math.round(score)} <span className={`text-sm font-normal ${textSub}`}>pts</span></div>
                             </div>
                         ))}
