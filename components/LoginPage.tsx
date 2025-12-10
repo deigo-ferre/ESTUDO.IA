@@ -334,7 +334,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
       checkPasswordStrength(val);
   };
 
-  // --- NOVA LÓGICA DE LOGIN COM SUPABASE ---
+  // --- NOVA LÓGICA DE LOGIN COM SUPABASE E LIMPEZA DE DADOS ---
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
@@ -374,6 +374,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
                 tokensConsumed: 0
             };
 
+            // 4. LIMPEZA CRÍTICA: Apaga dados do navegador do usuário anterior
+            localStorage.clear();
+
             onLogin(appUser);
         }
     } catch (error: any) {
@@ -383,7 +386,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
     }
   };
 
-  // --- NOVA LÓGICA DE CADASTRO COM SUPABASE ---
+  // --- NOVA LÓGICA DE CADASTRO COM SUPABASE E LIMPEZA ---
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (regPass !== regConfirmPass) {
@@ -424,6 +427,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
                 usage: { essaysCount: 0, lastEssayDate: null, examsCount: 0, lastExamDate: null, schedulesCount: 0, lastScheduleDate: null },
                 tokensConsumed: 0
             };
+            
+            // LIMPEZA CRÍTICA AQUI TAMBÉM
+            localStorage.clear();
+
             onLogin(newUser);
         } else {
             alert("Verifique seu email para confirmar o cadastro!");
