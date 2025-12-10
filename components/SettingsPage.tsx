@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../services/supabaseClient'; // Importação correta
+import { supabase } from '../services/supabaseClient'; // Importação do Supabase
 import { User, UserSettings, SisuGoal, SavedReport, SavedExam } from '../types';
 import { getSettings, saveSettings, getUserSession, saveUserSession, getReports, deleteReport, getExams, deleteExam, cancelUserSubscription } from '../services/storageService';
 import { estimateSisuCutoff } from '../services/geminiService';
@@ -155,17 +155,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
       }
   };
 
-  // --- AQUI ESTÁ A CORREÇÃO PRINCIPAL ---
+  // --- FUNÇÃO DE CANCELAMENTO CORRIGIDA ---
   const handleCancelSubscription = async () => {
       // 1. Pega o usuário REAL do Supabase (UUID verdadeiro)
       const { data: { user: authUser } } = await supabase.auth.getUser();
       
-      // Se não tiver usuário logado no Supabase, usa o do estado local como fallback, 
-      // mas o authUser.id é o que vai fazer funcionar.
+      // Tenta usar o ID real do Supabase, se não tiver, tenta o local (mas o real é o que importa)
       const realUserId = authUser?.id || user?.id;
 
       if (!realUserId) {
-        alert("Erro: Usuário não identificado.");
+        alert("Erro: Usuário não identificado. Faça login novamente.");
         return;
       }
       
@@ -174,7 +173,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
       if (confirm) {
           setIsCancelling(true);
           try {
-              console.log("Iniciando cancelamento para o ID:", realUserId); // Debug para você ver o ID certo
+              console.log("Iniciando cancelamento para o ID:", realUserId); // Debug no console
 
               // 2. Envia o ID CORRETO para o backend
               const serverSuccess = await requestSubscriptionCancellation(realUserId);
@@ -198,7 +197,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
           }
       }
   };
-  // --- FIM DA CORREÇÃO (Removi o código duplicado que estava aqui) ---
 
   const ChangePasswordModal = () => (
       <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
