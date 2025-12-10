@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../services/supabaseClient'; // Conexão real com Supabase
 import { User } from '../types';
 import Logo from './Logo';
 import TRICalculatorTeaser from './TRICalculatorTeaser';
 import CutoffSimulatorTeaser from './CutoffSimulatorTeaser';
-import { authenticateUser } from '../services/storageService';
 
 interface LoginPageProps {
   onLogin: (user: User) => void;
@@ -334,23 +334,88 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
       checkPasswordStrength(val);
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  // --- NOVA LÓGICA DE LOGIN COM SUPABASE ---
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) return;
     
     setLoading(true);
-    setTimeout(() => {
-        const existingUser = authenticateUser(email);
-        if (existingUser) {
-            onLogin(existingUser);
-        } else {
-            const userId = 'user-' + btoa(email).substring(0, 12);
-            const mockUser: User = {
-                id: userId,
-                name: email.split('@')[0],
-                email: email,
-                phone: '(11) 99999-9999',
-                avatar: `https://ui-avatars.com/api/?name=${email.split('@')[0]}&background=4338CA&color=fff`,
+    
+    try {
+        // 1. Autentica no Supabase
+        const { data, error } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+        });
+
+        if (error) throw error;
+
+        if (data.user) {
+            // 2. Busca informações extras do perfil (se é premium, etc)
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', data.user.id)
+                .single();
+
+            // 3. Monta o objeto de usuário completo para o App
+            const appUser: User = {
+                id: data.user.id, // O ID REAL (UUID)
+                name: profile?.email?.split('@')[0] || data.user.email?.split('@')[0] || 'Estudante',
+                email: data.user.email || '',
+                phone: profile?.phone || '',
+                avatar: `https://ui-avatars.com/api/?name=${data.user.email}&background=4338CA&color=fff`,
+                planType: profile?.is_premium ? 'PREMIUM' : 'FREE', // Pega do banco!
+                hasSeenOnboarding: false,
+                hasSeenOnboardingGoalSetter: false,
+                hasSeenEssayDemo: false,
+                hasSelectedPlan: false,
+                usage: { essaysCount: 0, lastEssayDate: null, examsCount: 0, lastExamDate: null, schedulesCount: 0, lastScheduleDate: null },
+                tokensConsumed: 0
+            };
+
+            onLogin(appUser);
+        }
+    } catch (error: any) {
+        alert("Erro ao entrar: " + (error.message || "Verifique suas credenciais."));
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  // --- NOVA LÓGICA DE CADASTRO COM SUPABASE ---
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (regPass !== regConfirmPass) {
+        alert("As senhas não coincidem!");
+        return;
+    }
+
+    setLoading(true);
+
+    try {
+        // 1. Cria usuário no Supabase Auth
+        const { data, error } = await supabase.auth.signUp({
+            email: regEmail,
+            password: regPass,
+            options: {
+                data: {
+                    full_name: regName,
+                    phone: regPhone,
+                }
+            }
+        });
+
+        if (error) throw error;
+
+        // Se deu certo, loga o usuário no app
+        if (data.user) {
+            const newUser: User = {
+                id: data.user.id, // ID REAL
+                name: regName,
+                email: regEmail,
+                phone: regPhone,
+                avatar: `https://ui-avatars.com/api/?name=${regName}&background=D946EF&color=fff`,
                 planType: 'FREE',
                 hasSeenOnboarding: false,
                 hasSeenOnboardingGoalSetter: false,
@@ -359,36 +424,16 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
                 usage: { essaysCount: 0, lastEssayDate: null, examsCount: 0, lastExamDate: null, schedulesCount: 0, lastScheduleDate: null },
                 tokensConsumed: 0
             };
-            onLogin(mockUser);
+            onLogin(newUser);
+        } else {
+            alert("Verifique seu email para confirmar o cadastro!");
         }
-    }, 1000);
-  };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (regPass !== regConfirmPass) {
-        alert("As senhas não coincidem!");
-        return;
+    } catch (error: any) {
+        alert("Erro no cadastro: " + error.message);
+    } finally {
+        setLoading(false);
     }
-
-    setLoading(true);
-    setTimeout(() => {
-        const newUser: User = {
-            id: `user-${Date.now()}`,
-            name: regName || 'Estudante',
-            email: regEmail,
-            phone: regPhone,
-            avatar: `https://ui-avatars.com/api/?name=${regName}&background=D946EF&color=fff`,
-            planType: 'FREE',
-            hasSeenOnboarding: false,
-            hasSeenOnboardingGoalSetter: false,
-            hasSeenEssayDemo: false,
-            hasSelectedPlan: false,
-            usage: { essaysCount: 0, lastEssayDate: null, examsCount: 0, lastExamDate: null, schedulesCount: 0, lastScheduleDate: null },
-            tokensConsumed: 0
-        };
-        onLogin(newUser);
-    }, 1500);
   };
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -399,18 +444,26 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
       setRegPhone(val);
   };
 
-  const handleForgotSubmit = (e: React.FormEvent) => {
+  const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
         alert("Por favor, digite seu email.");
         return;
     }
     setLoading(true);
-    setTimeout(() => {
+    
+    try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: window.location.origin + '/reset-password', // Opcional
+        });
+        if (error) throw error;
         alert(`Um link de recuperação foi enviado para ${email}`);
-        setLoading(false);
         setAuthMode('login');
-    }, 1500);
+    } catch (error: any) {
+        alert("Erro ao recuperar senha: " + error.message);
+    } finally {
+        setLoading(false);
+    }
   };
 
   if (view === 'auth') {
@@ -615,7 +668,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
                     </div>
                     
                     <p className="text-slate-400 text-lg mb-8 max-w-2xl mx-auto leading-relaxed">
-                       A única IA que cria um cronograma baseado no que você <strong>não sabe</strong>. Corrija redações, faça simulados e garanta sua vaga com tecnologia oficial do INEP.
+                        A única IA que cria um cronograma baseado no que você <strong>não sabe</strong>. Corrija redações, faça simulados e garanta sua vaga com tecnologia oficial do INEP.
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-4 justify-center">
