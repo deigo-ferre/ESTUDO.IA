@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef, useReducer, useCallback } from 'react';
 import { generateQuestionsBatch, generateEssayTheme, gradeEssay, estimateSisuCutoff, transcribeImage } from '../services/geminiService';
-import { saveExamProgress, getExamById, checkUsageLimit, incrementUsage, getUserSession, upgradeUser, deleteExam, getSettings } from '../services/storageService';
+import { saveExam, getExamById, checkUsageLimit, incrementUsage, upgradeUser, deleteExam, getSettings, getUserSession } from '../services/storageService';
 import { QuestionResult, EssayTheme, CorrectionResult, ExamPerformance, ExamConfig, AreaConhecimento, LinguaEstrangeira, SisuEstimation, BatchRequest, SavedExam } from '../types';
 import LoadingSpinner from './LoadingSpinner';
 import ResultCard from './ResultCard';
 
 type ImageFilter = 'none' | 'grayscale' | 'contrast';
 
-const AREAS_INFO = {
+const AREAS_INFO: Record<string, { color: string, label: string }> = {
   'Linguagens': { color: 'rose', label: 'Linguagens e Códigos' },
   'Humanas': { color: 'amber', label: 'Ciências Humanas' },
   'Natureza': { color: 'green', label: 'Ciências da Natureza' },
@@ -15,8 +15,8 @@ const AREAS_INFO = {
   'Redação': { color: 'slate', label: 'Redação' }
 };
 
-const INITIAL_BATCH_SIZE = 1; // Start quick with 1 question
-const DEFAULT_BATCH_SIZE = 3; // Continue with batches of 3 as requested
+const INITIAL_BATCH_SIZE = 1; 
+const DEFAULT_BATCH_SIZE = 3; 
 
 // --- EXAM REDUCER ---
 interface ExamStateReducer {
@@ -26,8 +26,8 @@ interface ExamStateReducer {
     userEssayText: string;
     timeRemaining: number;
     isFinished: boolean;
-    isLoading: boolean; // Blocking loading (initial)
-    isBackgroundLoading: boolean; // Non-blocking loading (subsequent batches)
+    isLoading: boolean; 
+    isBackgroundLoading: boolean; 
     loadingProgress: number; 
     batchQueue: BatchRequest[];
     error: string | null;
@@ -52,16 +52,11 @@ type ExamAction =
 
 const examReducer = (state: ExamStateReducer, action: ExamAction): ExamStateReducer => {
     switch (action.type) {
-        case 'START_LOADING':
-            return { ...state, isLoading: true, error: null };
-        case 'STOP_LOADING':
-            return { ...state, isLoading: false };
-        case 'START_BACKGROUND_LOADING':
-            return { ...state, isBackgroundLoading: true };
-        case 'STOP_BACKGROUND_LOADING':
-            return { ...state, isBackgroundLoading: false };
-        case 'SET_QUESTIONS':
-            return { ...state, questions: action.payload };
+        case 'START_LOADING': return { ...state, isLoading: true, error: null };
+        case 'STOP_LOADING': return { ...state, isLoading: false };
+        case 'START_BACKGROUND_LOADING': return { ...state, isBackgroundLoading: true };
+        case 'STOP_BACKGROUND_LOADING': return { ...state, isBackgroundLoading: false };
+        case 'SET_QUESTIONS': return { ...state, questions: action.payload };
         case 'ADD_QUESTIONS': {
             const newQuestions = [...state.questions];
             action.payload.newQuestions.forEach((q, i) => {
@@ -71,29 +66,18 @@ const examReducer = (state: ExamStateReducer, action: ExamAction): ExamStateRedu
             });
             return { ...state, questions: newQuestions };
         }
-        case 'SET_ESSAY_THEME':
-            return { ...state, essayTheme: action.payload };
-        case 'ANSWER':
-            return { ...state, userAnswers: { ...state.userAnswers, [action.payload.qIndex]: action.payload.answer } };
-        case 'SET_USER_ANSWERS':
-            return { ...state, userAnswers: action.payload };
-        case 'SET_ESSAY':
-            return { ...state, userEssayText: action.payload };
-        case 'SET_TIME':
-            return { ...state, timeRemaining: action.payload };
-        case 'SET_BATCH_QUEUE':
-            return { ...state, batchQueue: action.payload };
-        case 'DEQUEUE_BATCH':
-            return { ...state, batchQueue: state.batchQueue.slice(1) };
-        case 'SET_ERROR':
-            return { ...state, error: action.payload, isLoading: false, isBackgroundLoading: false };
-        case 'FINISH_EXAM':
-            return { ...state, isFinished: true, isLoading: false, isBackgroundLoading: false };
-        default:
-            return state;
+        case 'SET_ESSAY_THEME': return { ...state, essayTheme: action.payload };
+        case 'ANSWER': return { ...state, userAnswers: { ...state.userAnswers, [action.payload.qIndex]: action.payload.answer } };
+        case 'SET_USER_ANSWERS': return { ...state, userAnswers: action.payload };
+        case 'SET_ESSAY': return { ...state, userEssayText: action.payload };
+        case 'SET_TIME': return { ...state, timeRemaining: action.payload };
+        case 'SET_BATCH_QUEUE': return { ...state, batchQueue: action.payload };
+        case 'DEQUEUE_BATCH': return { ...state, batchQueue: state.batchQueue.slice(1) };
+        case 'SET_ERROR': return { ...state, error: action.payload, isLoading: false, isBackgroundLoading: false };
+        case 'FINISH_EXAM': return { ...state, isFinished: true, isLoading: false, isBackgroundLoading: false };
+        default: return state;
     }
 };
-
 
 const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () => void }> = ({ onStart, onBack }) => {
     const [targetCourse1, setTargetCourse1] = useState('');
@@ -102,7 +86,6 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<'full' | 'specific'>('full');
     
-    // Theme Logic
     const settings = getSettings();
     const isDark = settings.theme === 'dark';
     const textTitle = isDark ? 'text-white' : 'text-slate-900';
@@ -110,8 +93,20 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
     const inputClass = 'bg-white border-slate-300 text-slate-900 focus:border-indigo-500 outline-none placeholder-slate-400';
     const cardClass = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
 
+    const handleUpgradeClick = () => {
+        const user = getUserSession();
+        if (user) {
+            upgradeUser(user, 'PREMIUM');
+            alert("Upgrade para Premium realizado (Simulação Dev)!");
+            window.location.reload(); 
+        }
+    };
+
     const handleStart = (mode: 'day1' | 'day2' | 'area_training' | 'essay_only', area?: AreaConhecimento) => {
-        const limit = checkUsageLimit('exam');
+        const user = getUserSession();
+        if (!user) return;
+
+        const limit = checkUsageLimit(user, 'exam'); // CORRIGIDO: Passando user e tipo
         if (!limit.allowed) {
             setError(limit.message || "Limite atingido.");
             return;
@@ -124,28 +119,24 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
             mode,
             targetCourses: [targetCourse1, targetCourse2].filter(c => c.trim() !== ''),
             areas: [],
-            durationMinutes: 0,
             totalQuestions: 0,
-            foreignLanguage
+            foreignLanguage,
+            isTurbo: false
         };
 
         if (mode === 'day1') {
             if (!foreignLanguage) { setError("Selecione o idioma estrangeiro."); return; }
             config.areas = ['Linguagens', 'Humanas', 'Redação'];
-            config.durationMinutes = 330;
             config.totalQuestions = 90;
         } else if (mode === 'day2') {
             config.areas = ['Natureza', 'Matemática'];
-            config.durationMinutes = 300;
             config.totalQuestions = 90;
         } else if (mode === 'area_training' && area) {
             config.areas = [area];
             if (area === 'Linguagens' && !foreignLanguage) { setError("Selecione o idioma."); return; }
-            config.durationMinutes = 150;
             config.totalQuestions = 45;
         } else if (mode === 'essay_only') {
             config.areas = ['Redação'];
-            config.durationMinutes = 60;
             config.totalQuestions = 0;
         }
 
@@ -169,7 +160,7 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
             {error && (
                 <div className="bg-fuchsia-50 border-l-4 border-fuchsia-500 p-6 rounded-r-xl shadow-md flex flex-col items-center justify-between gap-4 mb-8">
                     <p className="text-fuchsia-800 font-bold">{error}</p>
-                    <button onClick={upgradeUser} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-6 py-2 rounded-lg shadow whitespace-nowrap">
+                    <button onClick={handleUpgradeClick} className="bg-fuchsia-600 hover:bg-fuchsia-700 text-white font-bold px-6 py-2 rounded-lg shadow whitespace-nowrap">
                         Fazer Upgrade para Premium
                     </button>
                 </div>
@@ -248,7 +239,7 @@ const Dashboard: React.FC<{ onStart: (config: ExamConfig) => void; onBack: () =>
                         </div>
 
                         {['Matemática', 'Humanas', 'Natureza', 'Linguagens'].map((area) => {
-                            const areaThemeColor = AREAS_INFO[area as AreaConhecimento]?.color || 'indigo';
+                            const areaThemeColor = AREAS_INFO[area]?.color || 'indigo';
                             return (
                                 <div key={area} className={`${isDark ? 'bg-slate-900 border-slate-800 hover:border-slate-700' : `bg-white border-slate-200 hover:border-${areaThemeColor}-200`} p-6 rounded-xl border-2 transition-all flex flex-col justify-between`}>
                                     <div>
@@ -363,7 +354,7 @@ const ExamRunner: React.FC<{
                 context.drawImage(video, 0, 0, canvas.width, canvas.height);
                 const imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
                 setEssayImage(imageBase64);
-                stopCamera(); // Stop camera after capture
+                stopCamera(); 
                 setEssayInputMode('editor');
             }
         }
@@ -430,7 +421,6 @@ const ExamRunner: React.FC<{
 
     // --- Delivery & Cancellation Logic ---
     const handleDeliveryCheck = () => {
-        // Se for modo apenas redação, confirmação simples
         if (config.mode === 'essay_only') {
             if(window.confirm("Deseja entregar sua redação para correção?")) onFinish();
             return;
@@ -449,7 +439,6 @@ const ExamRunner: React.FC<{
             if (window.confirm(confirmText)) {
                 onFinish();
             } else {
-                // Navega para a primeira questão não respondida
                 setQIndex(missing[0] - 1);
                 setCurrentView('questions');
             }
@@ -519,8 +508,8 @@ const ExamRunner: React.FC<{
                             <button onClick={handleExtractText} disabled={isTranscribing} className={`w-full py-4 rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-3 ${isTranscribing ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white hover:scale-[1.01] active:scale-[0.99]'}`}>
                                 {!isTranscribing ? (
                                     <>
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                                        Extrair Texto da Imagem
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                                            Extrair Texto da Imagem
                                     </>
                                 ) : "Processando..."}
                             </button>
@@ -599,9 +588,8 @@ const ExamRunner: React.FC<{
                                     <div className="flex items-center justify-between mb-6">
                                         <div className="flex gap-2">
                                             <span className="px-3 py-1 bg-slate-800 text-white text-xs font-bold rounded-full uppercase">Questão {qIndex + 1}</span>
-                                            {/* Fix: Extract questionAreaColor calculation outside the template literal */}
                                             {(() => {
-                                                const questionAreaColor = AREAS_INFO[currentQuestion.area as keyof typeof AREAS_INFO]?.color || 'slate';
+                                                const questionAreaColor = AREAS_INFO[currentQuestion.area]?.color || 'slate';
                                                 return (
                                                     <span className={`px-3 py-1 bg-${questionAreaColor}-100 text-${questionAreaColor}-800 text-xs font-bold rounded-full uppercase`}>
                                                         {currentQuestion.materia}
@@ -772,7 +760,7 @@ const ExamResults: React.FC<{
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {Object.entries(performance.scoreByArea).map(([area, score]) => (
                             <div key={area} className={`p-4 rounded-xl border ${highlightClass}`}>
-                                <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{AREAS_INFO[area as AreaConhecimento]?.label || area}</p>
+                                <p className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-800'}`}>{AREAS_INFO[area]?.label || area}</p>
                                 <div className={`text-3xl font-black mt-1 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{Math.round(score)} <span className={`text-sm font-normal ${textSub}`}>pts</span></div>
                             </div>
                         ))}
@@ -911,18 +899,30 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
 
     const saveProgress = useCallback((status: 'in_progress' | 'completed' = 'in_progress', perf?: ExamPerformance) => {
         if (!config) return;
-        const stateToSave = { 
-            questions: examState.questions, 
-            essayTheme: examState.essayTheme, 
-            userAnswers: examState.userAnswers, 
-            userEssayText: examState.userEssayText, 
-            timeRemaining: examState.timeRemaining, 
-            isFinished: status === 'completed', 
-            loadingProgress: 0, 
-            batchQueue: examState.batchQueue,
+        
+        // 1. Monta o objeto SavedExam COMPLETO
+        const examToSave: SavedExam = {
+            id: examId || Date.now().toString(),
+            userId: getUserSession()?.id || 'unknown',
+            createdAt: new Date().toISOString(), // Idealmente, pegue o original
+            updatedAt: new Date().toISOString(),
+            status: status,
+            config: config,
+            state: { 
+                questions: examState.questions, 
+                essayTheme: examState.essayTheme, 
+                userAnswers: examState.userAnswers, 
+                userEssayText: examState.userEssayText, 
+                timeRemaining: examState.timeRemaining, 
+                batchQueue: examState.batchQueue
+            },
+            performance: perf
         };
-        const id = saveExamProgress(examId, config, stateToSave, status, perf);
-        if (!examId) setExamId(id); // Set examId if it's a new exam being saved for the first time
+
+        // 2. Chama saveExam com UM argumento
+        saveExam(examToSave);
+        
+        if (!examId) setExamId(examToSave.id); 
     }, [config, examState, examId]);
 
     const handleStartExam = async (newConfig: ExamConfig) => {
@@ -1012,29 +1012,37 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
             }
             
             // Generate essay theme if needed
+            let initialTheme = null;
             if (newConfig.areas.includes('Redação')) {
-                const theme = await generateEssayTheme();
-                dispatch({ type: 'SET_ESSAY_THEME', payload: theme });
+                initialTheme = await generateEssayTheme();
+                dispatch({ type: 'SET_ESSAY_THEME', payload: initialTheme });
             }
 
             // Save initial state and get exam ID
-            const newExamId = saveExamProgress(
-                null, 
-                newConfig, 
-                { 
-                    questions: initialQuestions, 
-                    essayTheme: examState.essayTheme, 
-                    userAnswers: {}, 
-                    userEssayText: '', 
-                    timeRemaining: newConfig.durationMinutes * 60, 
-                    isFinished: false,
-                    loadingProgress: 0, 
-                    batchQueue: queue.slice(1) // Remaining queue
-                }, 
-                'in_progress'
-            );
-            setExamId(newExamId);
-            incrementUsage('exam'); // Log usage
+            // CRIAR O OBJETO COMPLETO AQUI TAMBÉM
+            const initialExam: SavedExam = {
+                id: Date.now().toString(),
+                userId: getUserSession()?.id || 'unknown',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                status: 'in_progress',
+                config: newConfig,
+                state: {
+                    questions: initialQuestions,
+                    essayTheme: initialTheme,
+                    userAnswers: {},
+                    userEssayText: '',
+                    timeRemaining: newConfig.durationMinutes * 60,
+                    batchQueue: queue.slice(1)
+                }
+            };
+
+            saveExam(initialExam);
+            setExamId(initialExam.id);
+            
+            const user = getUserSession();
+            if(user) incrementUsage(user, 'exam'); // Log usage with user object
+            
             setView('runner'); // Switch to runner view
         } catch (e) {
             console.error(e);
@@ -1133,6 +1141,7 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
             durationMinutes: 60, // Default for turbo
             totalQuestions: 15, // Default for turbo
             turboTopics: topics,
+            isTurbo: true
         };
         // Reset state for new exam
         setExamId(null); 
@@ -1146,8 +1155,6 @@ const SimuladoGenerator: React.FC<{ resumeExamId: string | null, onBack: () => v
     };
 
     const handleUpgrade = () => {
-        // This function would typically navigate to a plan selection page
-        // For now, we'll alert and suggest checking settings
         alert("Para acessar este recurso, por favor, faça upgrade para o plano Premium nas suas configurações ou na página de planos.");
     };
 
