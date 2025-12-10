@@ -1,4 +1,4 @@
-import { User, UserSettings, SavedReport, SavedExam, StudyScheduleResult } from '../types';
+import { User, UserSettings, SavedReport, SavedExam, StudyScheduleResult, CorrectionResult, EssayTheme } from '../types';
 
 // Chaves principais do LocalStorage
 const KEYS = {
@@ -31,12 +31,17 @@ const getCurrentUserId = (): string | null => {
     return user ? user.id : null;
 };
 
-// --- UPGRADE & PLANOS ---
+// --- UPGRADE, PLANOS & COMPATIBILIDADE ---
 
-export const upgradeUser = (user: User, plan: 'PREMIUM' | 'ADVANCED') => {
+export const upgradeUser = (user: User, plan: 'PREMIUM' | 'ADVANCED' | 'FREE') => {
     const updatedUser = { ...user, planType: plan };
     saveUserSession(updatedUser);
     return updatedUser;
+};
+
+// Alias para o App.tsx (resolve o erro 'has no exported member setUserPlan')
+export const setUserPlan = (user: User, plan: 'PREMIUM' | 'ADVANCED' | 'FREE') => {
+    return upgradeUser(user, plan);
 };
 
 export const cancelUserSubscription = (): User | null => {
@@ -105,14 +110,10 @@ export const deleteReport = (id: string) => {
     localStorage.setItem(KEYS.REPORTS, JSON.stringify(reports));
 };
 
-// --- ESTATÍSTICAS DO RELATÓRIO (CORRIGIDA) ---
-// Ajustada para retornar todos os campos que o WeeklyReportModal exige
 export const calculateReportStats = (user: User, startDate?: Date, endDate?: Date, customExams?: SavedExam[]) => {
     const userId = user.id;
-    // Se não passar customExams, pega do storage filtrado pelo usuário
     const allExams = customExams || getAllExamsRaw().filter((e: any) => e.userId === userId);
     
-    // Filtra por data se fornecido
     const filteredExams = allExams.filter(e => {
         if (!startDate || !endDate) return true;
         const examDate = new Date(e.createdAt);
@@ -122,7 +123,6 @@ export const calculateReportStats = (user: User, startDate?: Date, endDate?: Dat
     const simulados = filteredExams.filter(e => e.config.mode !== 'essay_only');
     const redacoes = filteredExams.filter(e => e.config.mode === 'essay_only');
 
-    // Cálculos básicos de média (placeholders para evitar erro de build)
     const avgSim = simulados.length > 0 ? 700 : 0; 
     const avgEssay = redacoes.length > 0 ? 600 : 0;
 
@@ -133,8 +133,8 @@ export const calculateReportStats = (user: User, startDate?: Date, endDate?: Dat
         averageScore: (avgSim + avgEssay) / 2,
         avgSim,
         avgEssay,
-        tasksCompleted: 0, // Placeholder se não tiver task tracking
-        tasksProgress: 0   // Placeholder
+        tasksCompleted: 0, 
+        tasksProgress: 0
     };
 };
 
@@ -160,6 +160,39 @@ export const saveExam = (exam: SavedExam) => {
 // Alias para manter compatibilidade
 export const saveExamProgress = saveExam;
 
+// FUNÇÃO RESTAURADA: Salva redação avulsa como se fosse um exame (resolve erro no App.tsx)
+export const saveStandaloneEssay = (user: User, correction: CorrectionResult, theme?: EssayTheme) => {
+    const essayExam: SavedExam = {
+        id: Date.now().toString(),
+        userId: user.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: 'completed',
+        config: {
+            mode: 'essay_only',
+            areas: ['Redação'],
+            totalQuestions: 1,
+            timeLimit: 3600,
+            isTurbo: false
+        },
+        state: {
+            currentQuestionIndex: 0,
+            answers: {},
+            userAnswers: {},
+            timeRemaining: 0,
+            essayTheme: theme,
+            essayText: "" // Opcional, se tiver no App.tsx pode passar
+        },
+        performance: {
+            correctCount: 0,
+            totalCount: 1,
+            byArea: {},
+            essayResult: correction
+        }
+    };
+    saveExam(essayExam);
+};
+
 export const getExams = (): SavedExam[] => {
     const userId = getCurrentUserId();
     if (!userId) return [];
@@ -168,7 +201,7 @@ export const getExams = (): SavedExam[] => {
 };
 
 export const getExamById = (id: string): SavedExam | undefined => {
-    const exams = getExams(); // Já filtra pelo usuário logado
+    const exams = getExams();
     return exams.find(e => e.id === id);
 };
 
@@ -186,7 +219,6 @@ export const saveSchedule = (schedule: StudyScheduleResult) => {
     const scheduleWithId = { ...schedule, id: Date.now().toString(), userId, active: true, createdAt: new Date().toISOString() };
     
     let allSchedules = getAllSchedulesRaw();
-    // Desativa anteriores do mesmo usuário
     allSchedules = allSchedules.map((s: any) => 
         s.userId === userId ? { ...s, active: false } : s
     );
@@ -224,17 +256,14 @@ export const toggleScheduleTask = (scheduleId: string, dayIndex: number, taskInd
     return null;
 };
 
-// --- LIMITES DE USO (Por Usuário) - CORRIGIDO ---
-// Agora retorna um OBJETO { allowed: boolean, message?: string } conforme esperado pelo SimuladoGenerator
+// --- LIMITES DE USO (Por Usuário) ---
 
 export const checkUsageLimit = (user: User, type: 'essay' | 'exam' | 'schedule'): { allowed: boolean; message?: string } => {
     if (user.planType === 'PREMIUM' || user.planType === 'ADVANCED') {
         return { allowed: true };
     }
 
-    // Limites do plano FREE
     const LIMITS = { essay: 1, exam: 1, schedule: 1 };
-    
     const count = user.usage?.[type === 'essay' ? 'essaysCount' : type === 'exam' ? 'examsCount' : 'schedulesCount'] || 0;
     
     if (count >= LIMITS[type]) {
@@ -243,7 +272,6 @@ export const checkUsageLimit = (user: User, type: 'essay' | 'exam' | 'schedule')
             message: `Limite do plano Gratuito atingido (${LIMITS[type]}/${LIMITS[type]}). Faça upgrade para continuar.` 
         };
     }
-    
     return { allowed: true };
 };
 
@@ -268,7 +296,7 @@ export const incrementUsage = (user: User, type: 'essay' | 'exam' | 'schedule') 
     return updatedUser;
 };
 
-// --- HELPERS INTERNOS (Lê tudo do disco) ---
+// --- HELPERS INTERNOS ---
 
 const getAllReportsRaw = (): SavedReport[] => {
     try { return JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]'); } catch { return []; }
@@ -282,7 +310,7 @@ const getAllSchedulesRaw = (): any[] => {
     try { return JSON.parse(localStorage.getItem(KEYS.SCHEDULES) || '[]'); } catch { return []; }
 };
 
-// --- FUNÇÕES DE UTILIDADE ---
+// --- UTILS ---
 
 export const logTokens = (count: number) => {
     const userId = getCurrentUserId();
@@ -295,7 +323,4 @@ export const logTokens = (count: number) => {
     }
 };
 
-// Função legacy mantida
-export const authenticateUser = (email: string) => {
-    return null; 
-};
+export const authenticateUser = (email: string) => { return null; };
