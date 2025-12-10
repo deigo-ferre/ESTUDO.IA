@@ -1,4 +1,4 @@
-import { User, UserSettings, SavedReport, SavedExam } from '../types';
+import { User, UserSettings, SavedReport, SavedExam, StudyScheduleResult } from '../types';
 
 // Chaves principais do LocalStorage
 const KEYS = {
@@ -6,6 +6,7 @@ const KEYS = {
     SETTINGS: 'enem_ai_settings_v2',
     REPORTS: 'enem_ai_reports_v2',
     EXAMS: 'enem_ai_exams_v2',
+    SCHEDULES: 'enem_ai_schedules_v2', // Adicionado de volta
     TOKENS: 'enem_ai_tokens_consumed'
 };
 
@@ -22,8 +23,6 @@ export const getUserSession = (): User | null => {
 
 export const clearUserSession = () => {
     localStorage.removeItem(KEYS.SESSION);
-    // Não limpamos os outros dados aqui para não perder o histórico de outros usuários
-    // A limpeza total só ocorre se o usuário clicar em "Excluir Conta"
 };
 
 // Helper: Pega o ID do usuário logado atual
@@ -32,24 +31,43 @@ const getCurrentUserId = (): string | null => {
     return user ? user.id : null;
 };
 
+// --- FUNÇÃO QUE ESTAVA FALTANDO: UPGRADE ---
+export const upgradeUser = (user: User, plan: 'PREMIUM' | 'ADVANCED') => {
+    const updatedUser = { ...user, planType: plan };
+    saveUserSession(updatedUser);
+    return updatedUser;
+};
+
+export const cancelUserSubscription = (): User | null => {
+    const user = getUserSession();
+    if (user) {
+        // Zera o plano localmente
+        const updatedUser = { ...user, planType: 'FREE' };
+        saveUserSession(updatedUser as User);
+        return updatedUser as User;
+    }
+    return null;
+};
+
 // --- CONFIGURAÇÕES (Por Usuário) ---
 
 export const getSettings = (): UserSettings => {
     const userId = getCurrentUserId();
+    // Correção do erro TS2739: Adicionando campos obrigatórios
     const defaultSettings: UserSettings = { 
         theme: 'system', 
         fontSize: 'base', 
         fontStyle: 'sans',
-        sisuGoals: [] 
+        sisuGoals: [],
+        name: '',        // Campo obrigatório adicionado
+        targetCourse: '' // Campo obrigatório adicionado
     };
 
     if (!userId) return defaultSettings;
 
     try {
-        // Busca o "Bancão" de configurações
         const allSettings = JSON.parse(localStorage.getItem(KEYS.SETTINGS) || '{}');
-        // Retorna só as do usuário atual ou o padrão
-        return allSettings[userId] || defaultSettings;
+        return { ...defaultSettings, ...allSettings[userId] };
     } catch {
         return defaultSettings;
     }
@@ -60,7 +78,7 @@ export const saveSettings = (settings: UserSettings) => {
     if (!userId) return;
 
     const allSettings = JSON.parse(localStorage.getItem(KEYS.SETTINGS) || '{}');
-    allSettings[userId] = settings; // Salva na gaveta deste usuário
+    allSettings[userId] = settings;
     localStorage.setItem(KEYS.SETTINGS, JSON.stringify(allSettings));
 };
 
@@ -70,9 +88,7 @@ export const saveReport = (report: SavedReport) => {
     const userId = getCurrentUserId();
     if (!userId) return;
 
-    // Garante que o relatório tenha o ID do dono
     const reportWithOwner = { ...report, userId };
-
     const reports = getAllReportsRaw();
     reports.unshift(reportWithOwner);
     localStorage.setItem(KEYS.REPORTS, JSON.stringify(reports));
@@ -81,9 +97,7 @@ export const saveReport = (report: SavedReport) => {
 export const getReports = (): SavedReport[] => {
     const userId = getCurrentUserId();
     if (!userId) return [];
-
     const allReports = getAllReportsRaw();
-    // FILTRO MÁGICO: Só retorna o que é deste usuário
     return allReports.filter((r: any) => r.userId === userId);
 };
 
@@ -92,18 +106,40 @@ export const deleteReport = (id: string) => {
     localStorage.setItem(KEYS.REPORTS, JSON.stringify(reports));
 };
 
+// --- FUNÇÃO QUE ESTAVA FALTANDO: STATS ---
+// Ajustada para aceitar os argumentos que o WeeklyReportModal envia
+export const calculateReportStats = (user: User, startDate?: Date, endDate?: Date, customExams?: SavedExam[]) => {
+    const userId = user.id;
+    const allExams = customExams || getExams(); // Usa os passados ou busca do storage
+    
+    // Filtra por data se fornecido
+    const filteredExams = allExams.filter(e => {
+        if (!startDate || !endDate) return true;
+        const examDate = new Date(e.createdAt);
+        return examDate >= startDate && examDate <= endDate;
+    });
+
+    const simulados = filteredExams.filter(e => e.config.mode !== 'essay_only');
+    const redacoes = filteredExams.filter(e => e.config.mode === 'essay_only');
+
+    return {
+        simCount: simulados.length,
+        essaysCount: redacoes.length,
+        // Adicione mais estatísticas conforme necessário
+        averageScore: 0 // Placeholder
+    };
+};
+
 // --- SIMULADOS & REDAÇÕES (Por Usuário) ---
 
 export const saveExam = (exam: SavedExam) => {
     const userId = getCurrentUserId();
     if (!userId) return;
 
-    const examWithOwner = { ...exam, userId }; // Carimba o dono
-
+    const examWithOwner = { ...exam, userId };
     const exams = getAllExamsRaw();
-    // Verifica se já existe para atualizar
-    const index = exams.findIndex(e => e.id === exam.id);
     
+    const index = exams.findIndex(e => e.id === exam.id);
     if (index >= 0) {
         exams[index] = examWithOwner;
     } else {
@@ -113,13 +149,18 @@ export const saveExam = (exam: SavedExam) => {
     localStorage.setItem(KEYS.EXAMS, JSON.stringify(exams));
 };
 
+// Alias para manter compatibilidade com componentes antigos
+export const saveExamProgress = saveExam;
+
 export const getExams = (): SavedExam[] => {
     const userId = getCurrentUserId();
     if (!userId) return [];
-
     const allExams = getAllExamsRaw();
-    // FILTRO MÁGICO: Só retorna o que é deste usuário
     return allExams.filter((e: any) => e.userId === userId);
+};
+
+export const getExamById = (id: string): SavedExam | undefined => {
+    return getExams().find(e => e.id === id);
 };
 
 export const deleteExam = (id: string) => {
@@ -127,18 +168,105 @@ export const deleteExam = (id: string) => {
     localStorage.setItem(KEYS.EXAMS, JSON.stringify(exams));
 };
 
+// --- CRONOGRAMAS (Por Usuário) - VOLTOU! ---
+
+export const saveSchedule = (schedule: StudyScheduleResult) => {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+
+    const scheduleWithId = { ...schedule, id: Date.now().toString(), userId, active: true, createdAt: new Date().toISOString() };
+    
+    // Pega todos, remove o antigo "ativo" deste usuário, adiciona o novo
+    let allSchedules = getAllSchedulesRaw();
+    
+    // Desativa anteriores do mesmo usuário
+    allSchedules = allSchedules.map((s: any) => 
+        s.userId === userId ? { ...s, active: false } : s
+    );
+
+    allSchedules.unshift(scheduleWithId);
+    localStorage.setItem(KEYS.SCHEDULES, JSON.stringify(allSchedules));
+    return scheduleWithId;
+};
+
+export const getSchedules = (): any[] => {
+    const userId = getCurrentUserId();
+    if (!userId) return [];
+    const all = getAllSchedulesRaw();
+    return all.filter((s: any) => s.userId === userId);
+};
+
+export const toggleScheduleTask = (scheduleId: string, dayIndex: number, taskIndex: number) => {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+
+    const allSchedules = getAllSchedulesRaw();
+    const scheduleIndex = allSchedules.findIndex((s: any) => s.id === scheduleId && s.userId === userId);
+
+    if (scheduleIndex >= 0) {
+        const schedule = allSchedules[scheduleIndex];
+        // Inicializa estrutura de 'completed' se não existir
+        if (!schedule.completedTasks) schedule.completedTasks = {};
+        
+        const taskKey = `${dayIndex}-${taskIndex}`;
+        schedule.completedTasks[taskKey] = !schedule.completedTasks[taskKey];
+        
+        allSchedules[scheduleIndex] = schedule;
+        localStorage.setItem(KEYS.SCHEDULES, JSON.stringify(allSchedules));
+        return schedule; // Retorna atualizado
+    }
+    return null;
+};
+
+// --- LIMITES DE USO (Por Usuário) - VOLTOU! ---
+
+export const checkUsageLimit = (user: User, type: 'essay' | 'exam' | 'schedule'): boolean => {
+    if (user.planType === 'PREMIUM' || user.planType === 'ADVANCED') return true;
+
+    // Limites do plano FREE
+    const LIMITS = { essay: 1, exam: 1, schedule: 1 };
+    
+    // Verifica contagem (reset simples semanal ou mensal não implementado aqui, usando total por simplicidade)
+    // Para um app real, ideal comparar datas.
+    const count = user.usage?.[type === 'essay' ? 'essaysCount' : type === 'exam' ? 'examsCount' : 'schedulesCount'] || 0;
+    
+    // Lógica simplificada: Free tem limite baixo
+    if (count >= LIMITS[type]) return false;
+    
+    return true;
+};
+
+export const incrementUsage = (user: User, type: 'essay' | 'exam' | 'schedule') => {
+    const updatedUser = { ...user };
+    if (!updatedUser.usage) updatedUser.usage = { essaysCount: 0, examsCount: 0, schedulesCount: 0, lastEssayDate: null, lastExamDate: null, lastScheduleDate: null };
+
+    if (type === 'essay') {
+        updatedUser.usage.essaysCount++;
+        updatedUser.usage.lastEssayDate = new Date().toISOString();
+    } else if (type === 'exam') {
+        updatedUser.usage.examsCount++;
+        updatedUser.usage.lastExamDate = new Date().toISOString();
+    } else {
+        updatedUser.usage.schedulesCount++;
+        updatedUser.usage.lastScheduleDate = new Date().toISOString();
+    }
+
+    saveUserSession(updatedUser);
+    return updatedUser;
+};
+
 // --- HELPERS INTERNOS (Lê tudo do disco) ---
 
 const getAllReportsRaw = (): SavedReport[] => {
-    try {
-        return JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]');
-    } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(KEYS.REPORTS) || '[]'); } catch { return []; }
 };
 
 const getAllExamsRaw = (): SavedExam[] => {
-    try {
-        return JSON.parse(localStorage.getItem(KEYS.EXAMS) || '[]');
-    } catch { return []; }
+    try { return JSON.parse(localStorage.getItem(KEYS.EXAMS) || '[]'); } catch { return []; }
+};
+
+const getAllSchedulesRaw = (): any[] => {
+    try { return JSON.parse(localStorage.getItem(KEYS.SCHEDULES) || '[]'); } catch { return []; }
 };
 
 // --- FUNÇÕES DE UTILIDADE ---
@@ -154,18 +282,7 @@ export const logTokens = (count: number) => {
     }
 };
 
-export const cancelUserSubscription = (): User | null => {
-    const user = getUserSession();
-    if (user) {
-        user.planType = 'FREE';
-        saveUserSession(user);
-    }
-    return user;
-};
-
-// Função legacy mantida para compatibilidade, mas agora usa lógica simples
+// Função legacy mantida
 export const authenticateUser = (email: string) => {
-    // No sistema novo com Supabase, essa função é pouco usada, 
-    // mas mantemos para não quebrar chamadas antigas.
     return null; 
 };
