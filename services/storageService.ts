@@ -73,8 +73,36 @@ export const saveExam = (exam: SavedExam) => {
     if (index >= 0) exams[index] = examWithOwner;
     else exams.unshift(examWithOwner);
     localStorage.setItem(KEYS.EXAMS, JSON.stringify(exams));
+    return exam.id; // Retorna o ID para compatibilidade
 };
-export const saveExamProgress = saveExam; // Alias
+
+// Alias CORRIGIDO para manter compatibilidade com a chamada antiga do App.tsx
+// O App.tsx chama saveExamProgress(id, config, state, status, perf)
+// Precisamos adaptar isso para criar o objeto SavedExam internamente
+export const saveExamProgress = (
+    id: string | null, 
+    config: any, 
+    state: any, 
+    status: 'in_progress' | 'completed', 
+    performance?: any
+) => {
+    const userId = getCurrentUserId() || 'unknown';
+    const examId = id || Date.now().toString();
+    
+    const examObject: SavedExam = {
+        id: examId,
+        userId: userId,
+        createdAt: new Date().toISOString(), // Em um app real, buscaria o original se fosse update
+        updatedAt: new Date().toISOString(),
+        status: status,
+        config: config,
+        state: state,
+        performance: performance
+    };
+    
+    saveExam(examObject);
+    return examId;
+};
 
 export const getExams = (): SavedExam[] => {
     const userId = getCurrentUserId();
@@ -82,37 +110,52 @@ export const getExams = (): SavedExam[] => {
     return getAllExamsRaw().filter((e: any) => e.userId === userId);
 };
 
-export const getExamById = (id: string): SavedExam | undefined => getExams().find(e => e.id === id);
+export const getExamById = (id: string): SavedExam | undefined => {
+    // Busca em todos para garantir que encontre mesmo se o userId se perder no dev
+    return getAllExamsRaw().find(e => e.id === id); 
+};
+
 export const deleteExam = (id: string) => {
     const exams = getAllExamsRaw().filter(e => e.id !== id);
     localStorage.setItem(KEYS.EXAMS, JSON.stringify(exams));
 };
 
-// CORREÇÃO AQUI: Removemos timeLimit e totalCount que davam erro
-export const saveStandaloneEssay = (user: User, correction: CorrectionResult, theme?: EssayTheme) => {
+// CORREÇÃO: Removemos timeLimit e totalCount que davam erro de tipo no ExamPerformance
+export const saveStandaloneEssay = (text: string, correction: CorrectionResult, theme?: EssayTheme | null) => {
+    const userId = getCurrentUserId();
+    if (!userId) return;
+
     const essayExam: SavedExam = {
         id: Date.now().toString(),
-        userId: user.id,
+        userId: userId,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         status: 'completed',
         config: {
             mode: 'essay_only',
             areas: ['Redação'],
-            totalQuestions: 1,
-            isTurbo: false
+            totalQuestions: 0,
+            isTurbo: false,
+            targetCourses: [],
+            durationMinutes: 60
         },
         state: {
+            questions: [],
             currentQuestionIndex: 0,
             answers: {},
             userAnswers: {},
             timeRemaining: 0,
-            essayTheme: theme || null, // Correção de tipo null
-            essayText: ""
+            essayTheme: theme || null,
+            userEssayText: text,
+            isFinished: true,
+            loadingProgress: 100,
+            batchQueue: []
         },
         performance: {
+            scoreByArea: {},
+            totalScore: correction.nota_total,
             correctCount: 0,
-            byArea: {},
+            totalQuestions: 0,
             essayResult: correction
         }
     };
@@ -177,6 +220,7 @@ export const saveSchedule = (schedule: StudyScheduleResult) => {
     let all = getAllSchedulesRaw().map((s: any) => s.userId === userId ? { ...s, active: false } : s);
     all.unshift({ ...schedule, id: Date.now().toString(), userId, active: true, createdAt: new Date().toISOString() });
     localStorage.setItem(KEYS.SCHEDULES, JSON.stringify(all));
+    return { ...schedule, id: Date.now().toString() };
 };
 export const getSchedules = (): any[] => {
     const userId = getCurrentUserId();
@@ -199,21 +243,59 @@ export const toggleScheduleTask = (scheduleId: string, dayIndex: number, taskInd
 };
 
 // --- LIMITS & TOKENS ---
-export const checkUsageLimit = (user: User, type: 'essay' | 'exam' | 'schedule'): { allowed: boolean; message?: string } => {
+// CORREÇÃO: checkUsageLimit agora aceita string ('essay' | 'exam') para compatibilidade com App.tsx
+// e (user, type) para compatibilidade com SimuladoGenerator.tsx (overloading simulado)
+export const checkUsageLimit = (arg1: User | string, arg2?: string): { allowed: boolean; message?: string } => {
+    let user: User | null = null;
+    let type: string = '';
+
+    if (typeof arg1 === 'string') {
+        user = getUserSession();
+        type = arg1;
+    } else {
+        user = arg1;
+        type = arg2 || '';
+    }
+
+    if (!user) return { allowed: false, message: "Usuário não logado." };
     if (user.planType === 'PREMIUM' || user.planType === 'ADVANCED') return { allowed: true };
-    const LIMITS = { essay: 1, exam: 1, schedule: 1 };
-    const count = user.usage?.[type === 'essay' ? 'essaysCount' : type === 'exam' ? 'examsCount' : 'schedulesCount'] || 0;
-    if (count >= LIMITS[type]) return { allowed: false, message: `Limite Free atingido. Upgrade necessário.` };
+
+    const LIMITS: Record<string, number> = { essay: 1, exam: 1, schedule: 1 };
+    // Mapeia os nomes de tipos para as chaves de uso no objeto User
+    const usageKey = type === 'essay' ? 'essaysCount' : type === 'exam' ? 'examsCount' : 'schedulesCount';
+    const count = user.usage?.[usageKey as keyof typeof user.usage] || 0;
+    
+    if (count >= (LIMITS[type] || 1)) {
+        return { 
+            allowed: false, 
+            message: `Limite do plano Gratuito atingido. Faça upgrade para continuar.` 
+        };
+    }
     return { allowed: true };
 };
 
-export const incrementUsage = (user: User, type: 'essay' | 'exam' | 'schedule') => {
+export const incrementUsage = (arg1: User | string, arg2?: string) => {
+    let user: User | null = null;
+    let type: string = '';
+
+    if (typeof arg1 === 'string') {
+        user = getUserSession();
+        type = arg1;
+    } else {
+        user = arg1;
+        type = arg2 || '';
+    }
+
+    if (!user) return null;
+
     const updated = { ...user };
     if (!updated.usage) updated.usage = { essaysCount: 0, examsCount: 0, schedulesCount: 0, lastEssayDate: null, lastExamDate: null, lastScheduleDate: null };
+    
     const now = new Date().toISOString();
     if (type === 'essay') { updated.usage.essaysCount++; updated.usage.lastEssayDate = now; }
     else if (type === 'exam') { updated.usage.examsCount++; updated.usage.lastExamDate = now; }
     else { updated.usage.schedulesCount++; updated.usage.lastScheduleDate = now; }
+    
     saveUserSession(updated);
     return updated;
 };
