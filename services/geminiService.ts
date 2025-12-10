@@ -16,6 +16,32 @@ const getAiClient = () => {
 
 const estimateTokens = (text: string) => Math.ceil(text.length / 4);
 
+// --- FUNÇÃO AUXILIAR PARA LIMPAR JSON DA IA ---
+const cleanAndParseJSON = (text: string) => {
+  try {
+    // 1. Tenta parsear direto caso venha limpo
+    return JSON.parse(text);
+  } catch (firstError) {
+    // 2. Se falhar, tenta limpar blocos de código Markdown (```json ... ```)
+    try {
+      let cleanText = text.replace(/```json\n?|\n?```/g, '').trim();
+      
+      // 3. Tenta encontrar onde começa '{' e termina '}' para ignorar textos extras
+      const firstBrace = cleanText.indexOf('{');
+      const lastBrace = cleanText.lastIndexOf('}');
+      
+      if (firstBrace !== -1 && lastBrace !== -1) {
+        cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+      }
+      
+      return JSON.parse(cleanText);
+    } catch (finalError) {
+      console.error("Falha fatal ao ler JSON da IA. Texto recebido:", text);
+      throw finalError; // Lança erro para cair no catch da função principal
+    }
+  }
+};
+
 const SISU_CACHE_KEY = 'enem_ai_sisu_cache_v1';
 
 const STATIC_SISU_DB: Record<string, SisuEstimation> = {
@@ -169,6 +195,7 @@ export const transcribeImage = async (image: ImageData): Promise<string> => {
   }
 };
 
+// --- FUNÇÃO CORRIGIDA COM TRATAMENTO DE ERRO E LIMPEZA DE JSON ---
 export const gradeEssay = async (text: string, image?: ImageData | null, theme?: EssayTheme | null): Promise<CorrectionResult> => {
   const ai = getAiClient();
   const modelId = "gemini-2.5-flash"; 
@@ -206,15 +233,29 @@ CRITÉRIOS: Rigor oficial INEP (Competências 1-5).
       }
     });
 
-    const output = response.text!;
+    const output = response.text || "{}";
     const inputTokens = estimateTokens(promptText) + (image ? 258 : 0);
     const outputTokens = estimateTokens(output);
     logTokens(inputTokens + outputTokens);
 
-    return JSON.parse(output) as CorrectionResult;
+    // Usa a função de limpeza antes de retornar
+    return cleanAndParseJSON(output) as CorrectionResult;
+
   } catch (error) {
     console.error("Essay grading error", error);
-    throw new Error("Erro ao corrigir redação.");
+    // Retorna um objeto de erro amigável para não quebrar a tela
+    return {
+        nota_total: 0,
+        competencias: [
+            { nome: "Erro no Processamento", nota: 0, feedback: "Houve um erro técnico ao corrigir sua redação." },
+            { nome: "Tente Novamente", nota: 0, feedback: "Por favor, envie o texto novamente." },
+            { nome: "Competência 3", nota: 0, feedback: "-" },
+            { nome: "Competência 4", nota: 0, feedback: "-" },
+            { nome: "Competência 5", nota: 0, feedback: "-" }
+        ],
+        comentario_geral: "Ocorreu um erro de comunicação com a IA ou o texto enviado não pôde ser processado corretamente. Verifique sua conexão e tente novamente.",
+        melhorias: ["Tente enviar um texto mais curto", "Verifique a formatação do texto"]
+    } as CorrectionResult;
   }
 };
 
@@ -241,7 +282,7 @@ REGRAS: Snippets curtos (max 10 palavras). Foco em tópicos de alta incidência.
     const output = response.text!;
     logTokens(estimateTokens(promptText) + estimateTokens(output));
 
-    return JSON.parse(output) as StudyScheduleResult;
+    return cleanAndParseJSON(output) as StudyScheduleResult;
   } catch (error) {
     console.error("Schedule generation error", error);
     throw new Error("Erro ao gerar cronograma.");
@@ -285,7 +326,7 @@ RULES:
     const output = response.text!;
     logTokens(estimateTokens(promptText) + estimateTokens(output));
 
-    const parsed = JSON.parse(output);
+    const parsed = cleanAndParseJSON(output);
     return parsed.questoes.map((q: any) => ({
         ...q,
         area: area,
@@ -406,7 +447,7 @@ export const generateEssayTheme = async (): Promise<EssayTheme> => {
     const output = response.text!;
     logTokens(estimateTokens(promptText) + estimateTokens(output));
     
-    return JSON.parse(output) as EssayTheme;
+    return cleanAndParseJSON(output) as EssayTheme;
   } catch (error) {
     console.error("Theme generation error", error);
     throw new Error("Erro ao gerar tema.");
