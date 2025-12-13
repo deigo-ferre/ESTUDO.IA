@@ -375,7 +375,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
             };
 
             // 4. LIMPEZA CRÍTICA: Apaga dados do navegador do usuário anterior
-            localStorage.clear();
+            // REMOVIDO: não devemos limpar o localStorage ao fazer login (remove dados do usuário atual)
+            // localStorage.clear();
 
             onLogin(appUser);
         }
@@ -429,7 +430,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, user, onEnterApp 
             };
             
             // LIMPEZA CRÍTICA AQUI TAMBÉM
-            localStorage.clear();
+            // REMOVIDO: não devemos limpar o localStorage ao registrar (remove dados do usuário atual)
+            // localStorage.clear();
 
             onLogin(newUser);
         } else {

@@ -217,10 +217,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onUpdateUser, onUpda
                       body: JSON.stringify({ userId: realUserId })
                   });
 
-                  if (response.ok) {
+                      if (response.ok) {
                       alert("Sua conta foi excluída. Sentiremos sua falta! 👋");
                       await supabase.auth.signOut();
-                      localStorage.clear();
+                      // REMOVIDO: não limpamos todo o localStorage aqui para evitar remover dados importantes do navegador
+                      // localStorage.clear();
                       window.location.reload(); 
                   } else {
                       const data = await response.json();
